@@ -1,0 +1,6 @@
+Ref Code,Designation,Fournisseur,PVP,Tarif,Stock Dispo,Conditionnement,Lien Photo
+X-9001,Câble HDMI 2m,TechPro,12.99,8.50,500,lot de 5,https://images.example.com/cable.jpg
+X-9002,Adaptateur USB-C,TechPro,9.99,6.00,300,unitaire,https://images.example.com/adapter.jpg
+X-9003,Souris sans fil,PeriphPlus,24.99,15.00,150,unitaire,https://images.example.com/mouse.jpg
+X-9004,Clavier mécanique,PeriphPlus,79.99,52.00,80,unitaire,https://images.example.com/keyboard.jpg
+X-9005,Webcam HD,StreamGear,39.99,25.00,200,unitaire,https://images.example.com/webcam.jpg

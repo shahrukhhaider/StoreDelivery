@@ -1,0 +1,6 @@
+SKU,Product Name,Description,Brand,Price,Compare At Price,Quantity,Image URL
+WIDGET-001,Blue Widget,A simple blue widget,Acme Co,24.99,29.99,100,https://images.example.com/widget-blue.jpg
+WIDGET-002,Red Widget,A simple red widget,Acme Co,24.99,29.99,50,https://images.example.com/widget-red.jpg
+WIDGET-003,Green Widget,A simple green widget,Acme Co,19.99,24.99,75,https://images.example.com/widget-green.jpg
+GADGET-001,Super Gadget,The best gadget ever,TechBrand,49.99,59.99,25,https://images.example.com/gadget.jpg
+GADGET-002,Mini Gadget,A small but mighty gadget,TechBrand,29.99,34.99,200,https://images.example.com/mini-gadget.jpg

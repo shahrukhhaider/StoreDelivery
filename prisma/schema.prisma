@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Shops — Section 6
+// ---------------------------------------------------------------------------
+
+model Shop {
+  id                  String    @id @default(cuid())
+  shopDomain          String    @unique @map("shop_domain")
+  encryptedAccessToken String   @map("encrypted_access_token")
+  scopes              String
+  installedAt         DateTime  @default(now()) @map("installed_at")
+  uninstalledAt       DateTime? @map("uninstalled_at")
+
+  catalogUploads   CatalogUpload[]
+  catalogs         Catalog[]
+  importOperations ImportOperation[]
+
+  @@map("shops")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog Uploads
+// ---------------------------------------------------------------------------
+
+enum UploadStatus {
+  pending
+  parsing
+  parsed
+  failed
+}
+
+model CatalogUpload {
+  id         String       @id @default(cuid())
+  shopId     String       @map("shop_id")
+  fileName   String       @map("file_name")
+  storageKey String       @map("storage_key")
+  format     String       // "csv" | "xlsx"
+  status     UploadStatus @default(pending)
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  shop     Shop      @relation(fields: [shopId], references: [id])
+  catalogs Catalog[]
+
+  @@index([shopId])
+  @@map("catalog_uploads")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogs
+// ---------------------------------------------------------------------------
+
+model Catalog {
+  id                String   @id @default(cuid())
+  shopId            String   @map("shop_id")
+  uploadId          String   @map("upload_id")
+  schemaFingerprint String   @map("schema_fingerprint")
+  parseVersion      String   @default("1") @map("parse_version")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  shop            Shop             @relation(fields: [shopId], references: [id])
+  upload          CatalogUpload    @relation(fields: [uploadId], references: [id])
+  fieldMappings   FieldMapping[]
+  catalogProducts CatalogProduct[]
+  importOperations ImportOperation[]
+
+  @@index([shopId])
+  @@map("catalogs")
+}
+
+// ---------------------------------------------------------------------------
+// Field Mappings — Section 8
+// ---------------------------------------------------------------------------
+
+enum MappingSourceEnum {
+  rule
+  model
+  user
+}
+
+model FieldMapping {
+  id           String            @id @default(cuid())
+  catalogId    String            @map("catalog_id")
+  sourceColumn String            @map("source_column")
+  targetField  String?           @map("target_field")
+  confidence   String            // "high" | "medium" | "low"
+  mappingSource MappingSourceEnum @map("mapping_source")
+  ignored      Boolean           @default(false)
+
+  catalog Catalog @relation(fields: [catalogId], references: [id])
+
+  @@index([catalogId])
+  @@map("field_mappings")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog Products
+// ---------------------------------------------------------------------------
+
+enum ProductStatus {
+  pending
+  ready
+  needs_review
+  blocked
+}
+
+model CatalogProduct {
+  id             String        @id @default(cuid())
+  catalogId      String        @map("catalog_id")
+  sourceKey      String        @map("source_key")
+  normalizedJson Json          @map("normalized_json")
+  status         ProductStatus @default(pending)
+
+  catalog Catalog @relation(fields: [catalogId], references: [id])
+
+  @@index([catalogId])
+  @@unique([catalogId, sourceKey])
+  @@map("catalog_products")
+}
+
+// ---------------------------------------------------------------------------
+// Import Operations — Section 13-15
+// ---------------------------------------------------------------------------
+
+enum ImportOperationStatus {
+  planned
+  in_progress
+  completed
+  failed
+  cancelled
+}
+
+model ImportOperation {
+  id              String                @id @default(cuid())
+  shopId          String                @map("shop_id")
+  catalogId       String                @map("catalog_id")
+  status          ImportOperationStatus @default(planned)
+  idempotencyKey  String                @unique @map("idempotency_key")
+  plannedCount    Int                   @default(0) @map("planned_count")
+  successCount    Int                   @default(0) @map("success_count")
+  failedCount     Int                   @default(0) @map("failed_count")
+  skippedCount    Int                   @default(0) @map("skipped_count")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  completedAt     DateTime?             @map("completed_at")
+
+  shop    Shop         @relation(fields: [shopId], references: [id])
+  catalog Catalog      @relation(fields: [catalogId], references: [id])
+  items   ImportItem[]
+
+  @@index([shopId])
+  @@map("import_operations")
+}
+
+// ---------------------------------------------------------------------------
+// Import Items — per-product result tracking
+// ---------------------------------------------------------------------------
+
+enum ImportItemAction {
+  create
+  skip
+}
+
+enum ImportItemStatus {
+  pending
+  success
+  failed
+  skipped
+}
+
+model ImportItem {
+  id                String           @id @default(cuid())
+  importOperationId String           @map("import_operation_id")
+  sourceProductKey  String           @map("source_product_key")
+  action            ImportItemAction
+  status            ImportItemStatus @default(pending)
+  shopifyProductId  String?          @map("shopify_product_id")
+  errorCode         String?          @map("error_code")
+  errorMessage      String?          @map("error_message")
+
+  importOperation ImportOperation @relation(fields: [importOperationId], references: [id])
+
+  @@index([importOperationId])
+  @@map("import_items")
+}

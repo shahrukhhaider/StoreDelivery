@@ -1,0 +1,11 @@
+Parent SKU,SKU,Product Name,Color,Size,Price,Quantity,Image URL
+TSHIRT-001,TSHIRT-001-RED-S,Classic Tee,Red,S,19.99,30,https://images.example.com/tee-red.jpg
+TSHIRT-001,TSHIRT-001-RED-M,Classic Tee,Red,M,19.99,45,https://images.example.com/tee-red.jpg
+TSHIRT-001,TSHIRT-001-RED-L,Classic Tee,Red,L,19.99,20,https://images.example.com/tee-red.jpg
+TSHIRT-001,TSHIRT-001-BLU-S,Classic Tee,Blue,S,19.99,35,https://images.example.com/tee-blue.jpg
+TSHIRT-001,TSHIRT-001-BLU-M,Classic Tee,Blue,M,19.99,50,https://images.example.com/tee-blue.jpg
+TSHIRT-001,TSHIRT-001-BLU-L,Classic Tee,Blue,L,19.99,15,https://images.example.com/tee-blue.jpg
+HOODIE-001,HOODIE-001-BLK-M,Zip Hoodie,Black,M,49.99,20,https://images.example.com/hoodie-black.jpg
+HOODIE-001,HOODIE-001-BLK-L,Zip Hoodie,Black,L,49.99,18,https://images.example.com/hoodie-black.jpg
+HOODIE-001,HOODIE-001-GRY-M,Zip Hoodie,Gray,M,49.99,22,https://images.example.com/hoodie-gray.jpg
+HOODIE-001,HOODIE-001-GRY-L,Zip Hoodie,Gray,L,49.99,16,https://images.example.com/hoodie-gray.jpg

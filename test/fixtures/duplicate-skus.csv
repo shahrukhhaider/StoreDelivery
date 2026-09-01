@@ -1,0 +1,7 @@
+Item Number,Title,Vendor,Retail Price,Qty,UPC
+ABC-100,Leather Wallet,CraftCo,45.00,10,012345678901
+ABC-101,Canvas Bag,CraftCo,35.00,25,012345678902
+ABC-100,Leather Wallet (duplicate),CraftCo,45.00,5,012345678901
+ABC-102,Phone Case,TechWear,15.00,100,012345678903
+ABC-103,Sunglasses,StyleBrand,89.99,12,012345678904
+ABC-103,Sunglasses (also duplicate),StyleBrand,89.99,8,012345678904
