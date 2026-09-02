@@ -26,11 +26,16 @@ const configSchema = z.object({
   maxUploadSizeMb: z.coerce.number().default(50),
   rawFileRetentionDays: z.coerce.number().default(30),
 
-  // Shopify (placeholder for Milestone C)
+  // Shopify
   shopifyApiKey: z.string().default(""),
   shopifyApiSecret: z.string().default(""),
   shopifyScopes: z.string().default("write_products,read_products"),
   shopifyAppUrl: z.string().default("https://localhost:3000"),
+
+  // LLM (for mapping inference)
+  llmProvider: z.enum(["anthropic", "openai", "none"]).default("none"),
+  llmApiKey: z.string().default(""),
+  llmModel: z.string().default("claude-sonnet-4-20250514"),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
@@ -58,6 +63,9 @@ export function loadConfig(): AppConfig {
     shopifyApiSecret: process.env.SHOPIFY_API_SECRET,
     shopifyScopes: process.env.SHOPIFY_SCOPES,
     shopifyAppUrl: process.env.SHOPIFY_APP_URL,
+    llmProvider: process.env.LLM_PROVIDER,
+    llmApiKey: process.env.LLM_API_KEY,
+    llmModel: process.env.LLM_MODEL,
   });
 
   return _config;
