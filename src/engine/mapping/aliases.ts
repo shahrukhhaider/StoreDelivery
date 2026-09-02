@@ -177,6 +177,7 @@ export const HEADER_ALIASES: Record<string, TargetField> = {
   "image1": "image.url",
   "image src": "image.url",
   "image source": "image.url",
+  "image alt text": "image.altText",
   "product image": "image.url",
 
   // --- Grouping ---
@@ -192,8 +193,6 @@ export const HEADER_ALIASES: Record<string, TargetField> = {
 
   // --- Shopify-native CSV column names ---
   "handle": "ignore",
-  "body (html)": "product.description",
-  "body html": "product.description",
   "variant sku": "variant.sku",
   "variant price": "variant.price",
   "variant compare at price": "variant.compareAtPrice",
@@ -202,8 +201,6 @@ export const HEADER_ALIASES: Record<string, TargetField> = {
   "variant weight unit": "variant.weightUnit",
   "variant inventory qty": "variant.inventoryQuantity",
   "variant inventory quantity": "variant.inventoryQuantity",
-  "image src": "image.url",
-  "image alt text": "image.altText",
   "variant image": "image.url",
   "option1 value": "variant.option1",
   "option2 value": "variant.option2",
@@ -257,10 +254,7 @@ export const HEADER_ALIASES: Record<string, TargetField> = {
   "imagen": "image.url",
 
   // --- Industrial / B2B ---
-  "part number": "variant.sku",
   "item id": "variant.sku",
-  "model number": "variant.sku",
-  "model no": "variant.sku",
   "country of origin": "ignore",
   "dimensions": "ignore",
   "tariff code": "ignore",
