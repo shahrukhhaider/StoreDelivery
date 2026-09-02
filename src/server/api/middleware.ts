@@ -20,16 +20,40 @@ export function requestLogger(req: Request, _res: Response, next: NextFunction):
 
 /**
  * Extract shop ID from request header or query.
- * In V0 dev mode, uses X-Shop-Id header. In production, will come from Shopify session.
+ * Ensures the shop record exists in DB (creates if needed for dev mode).
  */
-export function shopScope(req: Request, res: Response, next: NextFunction): void {
+export function shopScope(req: Request, _res: Response, next: NextFunction): void {
   const shopId =
     (req.headers["x-shop-id"] as string) ||
     (req.query.shopId as string) ||
     "dev_shop";
 
   (req as Request & { shopId: string }).shopId = shopId;
-  next();
+
+  // Ensure shop record exists (lazy upsert)
+  ensureShopExists(shopId).then(() => next()).catch(next);
+}
+
+const ensuredShops = new Set<string>();
+
+async function ensureShopExists(shopId: string): Promise<void> {
+  if (ensuredShops.has(shopId)) return;
+
+  const { getPrisma } = await import("../db.js");
+  const prisma = getPrisma();
+
+  await prisma.shop.upsert({
+    where: { id: shopId },
+    create: {
+      id: shopId,
+      shopDomain: shopId === "dev_shop" ? "dev.myshopify.com" : `${shopId}.myshopify.com`,
+      encryptedAccessToken: "dev-token",
+      scopes: "write_products,read_products",
+    },
+    update: {},
+  });
+
+  ensuredShops.add(shopId);
 }
 
 /**

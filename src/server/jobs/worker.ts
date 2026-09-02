@@ -76,12 +76,20 @@ async function processNextUpload(): Promise<void> {
     const storage = getStorage();
     const buffer = await storage.download(pending.storageKey);
 
+    // Build LLM config from server config
+    const config = (await import("../config.js")).getConfig();
+    const llmConfig =
+      config.llmProvider !== "none" && config.llmApiKey
+        ? { provider: config.llmProvider, apiKey: config.llmApiKey, model: config.llmModel }
+        : undefined;
+
     // Run engine pipeline
     const result = await processCatalog(buffer, {
       format: pending.format as CatalogFormat,
       shopId: pending.shopId,
       uploadId: pending.id,
       fileName: pending.fileName,
+      llm: llmConfig,
     });
 
     const { catalog, mappingResult } = result;

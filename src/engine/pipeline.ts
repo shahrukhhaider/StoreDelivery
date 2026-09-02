@@ -1,7 +1,7 @@
 /**
  * End-to-end catalog processing pipeline.
  *
- * parse → map → group → validate → return Catalog
+ * parse → map (alias → type → LLM) → group → validate → return Catalog
  *
  * This is the main entry point for processing a supplier file
  * into the canonical catalog representation.
@@ -11,7 +11,8 @@ import type { Catalog, CatalogFormat } from "@shared/types/catalog.js";
 import type { FieldMapping } from "@shared/types/mapping.js";
 import { parseFile, type ParsedSheet } from "./parser/index.js";
 import { generateFingerprint } from "./parser/fingerprint.js";
-import { mapColumns, type MappingResult } from "./mapping/index.js";
+import { mapColumns, type MappingResult, type MappingOptions } from "./mapping/index.js";
+import type { LlmInferenceConfig } from "./mapping/index.js";
 import { groupRows } from "./grouping/index.js";
 import { validateCatalog } from "./validation/index.js";
 import { nanoid } from "nanoid";
@@ -31,6 +32,8 @@ export type PipelineOptions = {
   fileName: string;
   /** Pre-existing mappings to use instead of auto-detection */
   existingMappings?: FieldMapping[];
+  /** LLM config for mapping inference on unmapped columns */
+  llm?: LlmInferenceConfig;
 };
 
 export type PipelineResult = {
@@ -70,7 +73,11 @@ export async function processCatalog(
         .map((m) => m.sourceColumn),
     };
   } else {
-    mappingResult = await mapColumns(sheet);
+    const mappingOpts: MappingOptions = {};
+    if (options.llm) {
+      mappingOpts.llm = options.llm;
+    }
+    mappingResult = await mapColumns(sheet, mappingOpts);
   }
 
   // Step 3: Group rows into products/variants

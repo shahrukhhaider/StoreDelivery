@@ -4,17 +4,21 @@
  * Orchestrates the mapping pipeline:
  * 1. Deterministic alias lookup
  * 2. Type inference
- * 3. Confidence assignment
- *
- * LLM inference (step 3 in the spec) is deferred to a separate module —
- * this engine handles the deterministic phases that Milestone A covers.
+ * 3. LLM inference (only for unresolved columns)
+ * 4. Confidence assignment + conflict detection
  */
 
 import type { FieldMapping, TargetField, MappingConfidence } from "@shared/types/mapping.js";
 import type { ParsedSheet } from "../parser/index.js";
 import { lookupAlias } from "./aliases.js";
 import { inferAllColumnTypes, type ColumnSample } from "./type-inference.js";
+import { inferColumnsWithLlm, type LlmInferenceConfig } from "./llm-inference.js";
 import { INFERENCE_SAMPLE_SIZE } from "@shared/constants.js";
+
+export type MappingOptions = {
+  /** LLM config — if not provided or provider is "none", LLM step is skipped */
+  llm?: LlmInferenceConfig;
+};
 
 export type MappingResult = {
   mappings: FieldMapping[];
@@ -35,15 +39,26 @@ const TYPE_TO_TARGET: Record<string, TargetField> = {
 };
 
 /**
- * Run the full deterministic mapping pipeline on parsed sheet headers + sample data.
+ * Run the full mapping pipeline on parsed sheet headers + sample data.
  */
-export async function mapColumns(sheet: ParsedSheet): Promise<MappingResult> {
+export async function mapColumns(
+  sheet: ParsedSheet,
+  options?: MappingOptions,
+): Promise<MappingResult> {
   const mappings: FieldMapping[] = [];
   const needsReview: string[] = [];
   const unmapped: string[] = [];
 
   // Track which target fields are already claimed to detect conflicts
   const claimedTargets = new Map<TargetField, string[]>();
+
+  // Build sample data for inference
+  const samples: ColumnSample[] = sheet.headers.map((header) => ({
+    header,
+    values: sheet.rows
+      .slice(0, INFERENCE_SAMPLE_SIZE)
+      .map((row) => row[header] ?? ""),
+  }));
 
   // Phase 1: Alias lookup for every header
   const aliasResults = new Map<
@@ -56,33 +71,68 @@ export async function mapColumns(sheet: ParsedSheet): Promise<MappingResult> {
   }
 
   // Phase 2: Type inference for all columns
-  const samples: ColumnSample[] = sheet.headers.map((header) => ({
-    header,
-    values: sheet.rows
-      .slice(0, INFERENCE_SAMPLE_SIZE)
-      .map((row) => row[header] ?? ""),
-  }));
-
   const typeResults = inferAllColumnTypes(samples);
   const typeByHeader = new Map(typeResults.map((r) => [r.header, r]));
 
-  // Phase 3: Assign mappings
+  // Phase 3: LLM inference for columns not resolved by alias or type
+  const unresolvedHeaders: string[] = [];
   for (const header of sheet.headers) {
     const alias = aliasResults.get(header);
     const typeInfo = typeByHeader.get(header);
+    const typeResolved = typeInfo && typeInfo.inferredType in TYPE_TO_TARGET;
+    if (!alias && !typeResolved) {
+      unresolvedHeaders.push(header);
+    }
+  }
+
+  const llmResults = new Map<string, TargetField | null>();
+
+  if (unresolvedHeaders.length > 0 && options?.llm && options.llm.provider !== "none") {
+    const llmRequests = unresolvedHeaders.map((header) => {
+      const idx = sheet.headers.indexOf(header);
+      const neighborHeaders = sheet.headers
+        .slice(Math.max(0, idx - 2), idx + 3)
+        .filter((h) => h !== header);
+      const sample = samples.find((s) => s.header === header);
+      return {
+        header,
+        neighborHeaders,
+        sampleValues: sample?.values.filter((v) => v.trim() !== "").slice(0, 10) ?? [],
+      };
+    });
+
+    const results = await inferColumnsWithLlm(llmRequests, options.llm);
+    for (const result of results) {
+      llmResults.set(result.header, result.suggestedTarget);
+    }
+  }
+
+  // Phase 4: Assign mappings (alias → type → LLM → unmapped)
+  for (const header of sheet.headers) {
+    const alias = aliasResults.get(header);
+    const typeInfo = typeByHeader.get(header);
+    const llmSuggestion = llmResults.get(header);
 
     let targetField: TargetField | null = null;
     let confidence: MappingConfidence = "low";
+    let source: "rule" | "model" = "rule";
 
     if (alias) {
       // Alias match — high confidence
       targetField = alias.target;
       confidence = "high";
+      source = "rule";
     } else if (typeInfo && typeInfo.inferredType in TYPE_TO_TARGET) {
       // Type inference suggests a target — medium confidence
       targetField =
         TYPE_TO_TARGET[typeInfo.inferredType as keyof typeof TYPE_TO_TARGET];
       confidence = "medium";
+      source = "rule";
+    } else if (llmSuggestion) {
+      // LLM suggestion — medium confidence, always needs review
+      targetField = llmSuggestion;
+      confidence = "medium";
+      source = "model";
     }
 
     if (targetField) {
@@ -95,12 +145,12 @@ export async function mapColumns(sheet: ParsedSheet): Promise<MappingResult> {
       sourceColumn: header,
       targetField,
       confidence,
-      mappingSource: targetField ? "rule" : "rule",
+      mappingSource: source,
       ignored: false,
     });
   }
 
-  // Phase 4: Detect conflicts — two columns mapped to the same non-repeatable target
+  // Phase 5: Detect conflicts — two columns mapped to the same non-repeatable target
   const repeatableTargets = new Set<TargetField>([
     "image.url",
     "product.tags",
@@ -120,7 +170,7 @@ export async function mapColumns(sheet: ParsedSheet): Promise<MappingResult> {
     }
   }
 
-  // Phase 5: Mark medium-confidence and unmapped columns
+  // Phase 6: Mark medium-confidence and unmapped columns
   for (const mapping of mappings) {
     if (mapping.targetField === null) {
       unmapped.push(mapping.sourceColumn);
