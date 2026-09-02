@@ -3,6 +3,7 @@ dist/
 build/
 .env
 .env.local
+.steps*
 .env.*.local
 *.log
 coverage/

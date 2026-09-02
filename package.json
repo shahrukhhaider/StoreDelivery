@@ -2,6 +2,7 @@
   "name": "storekeeper",
   "version": "0.1.0",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "description": "Shopify Supplier Catalog Importer — upload supplier spreadsheets, review mappings, import new products",
   "type": "module",
   "engines": {
