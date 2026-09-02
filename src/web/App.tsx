@@ -1,23 +1,38 @@
 /**
- * Root app component — Polaris-wrapped with simple state-machine routing.
+ * Root app component — Polaris-wrapped with state-machine routing.
  */
 
 import React, { useState, useCallback } from "react";
 import { AppProvider, Frame, TopBar } from "@shopify/polaris";
 import enTranslations from "@shopify/polaris/locales/en.json";
+import { WelcomePage } from "./pages/WelcomePage.js";
 import { UploadPage } from "./pages/UploadPage.js";
 import { MappingPage } from "./pages/MappingPage.js";
 import { PreviewPage } from "./pages/PreviewPage.js";
+import { ResultsPage } from "./pages/ResultsPage.js";
 import { HistoryPage } from "./pages/HistoryPage.js";
 
 type Route =
+  | { page: "welcome" }
   | { page: "upload" }
   | { page: "mapping"; uploadId: string; catalogId: string }
   | { page: "preview"; catalogId: string }
+  | { page: "results"; operationId: string }
   | { page: "history" };
 
 export function App() {
-  const [route, setRoute] = useState<Route>({ page: "upload" });
+  // Start on welcome for first visit; could check localStorage for returning users
+  const [route, setRoute] = useState<Route>(() => {
+    const visited = typeof localStorage !== "undefined" && localStorage.getItem("sk_visited");
+    return visited ? { page: "upload" } : { page: "welcome" };
+  });
+
+  const navigateToUpload = useCallback(() => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("sk_visited", "1");
+    }
+    setRoute({ page: "upload" });
+  }, []);
 
   const navigateToMapping = useCallback(
     (uploadId: string, catalogId: string) => {
@@ -30,8 +45,8 @@ export function App() {
     setRoute({ page: "preview", catalogId });
   }, []);
 
-  const navigateToUpload = useCallback(() => {
-    setRoute({ page: "upload" });
+  const navigateToResults = useCallback((operationId: string) => {
+    setRoute({ page: "results", operationId });
   }, []);
 
   const navigateToHistory = useCallback(() => {
@@ -74,6 +89,9 @@ export function App() {
 
   let content: React.ReactNode;
   switch (route.page) {
+    case "welcome":
+      content = <WelcomePage onStart={navigateToUpload} />;
+      break;
     case "upload":
       content = <UploadPage onComplete={navigateToMapping} />;
       break;
@@ -91,11 +109,25 @@ export function App() {
         <PreviewPage
           catalogId={route.catalogId}
           onBack={navigateToUpload}
+          onExecute={navigateToResults}
+        />
+      );
+      break;
+    case "results":
+      content = (
+        <ResultsPage
+          operationId={route.operationId}
+          onBack={navigateToUpload}
         />
       );
       break;
     case "history":
-      content = <HistoryPage onUpload={navigateToUpload} />;
+      content = (
+        <HistoryPage
+          onUpload={navigateToUpload}
+          onViewResults={navigateToResults}
+        />
+      );
       break;
   }
 

@@ -1,0 +1,15 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-9_x"]
+
+[phases.install]
+cmds = ["npm ci --legacy-peer-deps"]
+
+[phases.build]
+cmds = [
+  "npx prisma generate",
+  "npm run build:server",
+  "npm run build:client",
+]
+
+[start]
+cmd = "npx prisma migrate deploy && node dist/server/index.js"

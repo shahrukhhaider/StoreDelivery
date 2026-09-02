@@ -1,12 +1,21 @@
 /**
  * File Storage — Section 4
  *
- * Abstract storage interface with local filesystem implementation for dev
- * and S3-compatible implementation for production.
+ * Abstract storage interface with:
+ * - Local filesystem implementation for development
+ * - S3-compatible implementation for production (Railway, AWS, etc.)
  */
 
 import { mkdir, writeFile, readFile, unlink, access } from "fs/promises";
 import { join, dirname } from "path";
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl as s3GetSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getConfig } from "../config.js";
 
 // ---------------------------------------------------------------------------
@@ -47,7 +56,6 @@ export class LocalFileStorage implements FileStorage {
   }
 
   async getSignedUrl(key: string): Promise<string> {
-    // In local dev, just return a path-based URL the dev server can serve
     return `/api/files/${encodeURIComponent(key)}`;
   }
 
@@ -70,6 +78,99 @@ export class LocalFileStorage implements FileStorage {
 }
 
 // ---------------------------------------------------------------------------
+// S3-compatible implementation (production)
+// ---------------------------------------------------------------------------
+
+export class S3FileStorage implements FileStorage {
+  private client: S3Client;
+  private bucket: string;
+
+  constructor() {
+    const config = getConfig();
+    this.bucket = config.storageBucket;
+
+    const clientConfig: ConstructorParameters<typeof S3Client>[0] = {
+      region: config.storageRegion,
+    };
+
+    // Custom endpoint for S3-compatible services (Railway Object Storage, MinIO, etc.)
+    if (config.storageEndpoint) {
+      clientConfig.endpoint = config.storageEndpoint;
+      clientConfig.forcePathStyle = true;
+    }
+
+    // Explicit credentials if provided; otherwise uses SDK default chain (IAM roles, env vars)
+    if (config.storageAccessKey && config.storageSecretKey) {
+      clientConfig.credentials = {
+        accessKeyId: config.storageAccessKey,
+        secretAccessKey: config.storageSecretKey,
+      };
+    }
+
+    this.client = new S3Client(clientConfig);
+  }
+
+  async upload(key: string, buffer: Buffer): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+      }),
+    );
+  }
+
+  async download(key: string): Promise<Buffer> {
+    const res = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      }),
+    );
+
+    // Stream body to buffer
+    const stream = res.Body;
+    if (!stream) throw new Error(`Empty body for key: ${key}`);
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of stream as AsyncIterable<Uint8Array>) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
+
+  async getSignedUrl(key: string, expiresInSeconds = 3600): Promise<string> {
+    return s3GetSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      { expiresIn: expiresInSeconds },
+    );
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      }),
+    );
+  }
+
+  async exists(key: string): Promise<boolean> {
+    try {
+      await this.client.send(
+        new HeadObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        }),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -81,10 +182,10 @@ export function getStorage(): FileStorage {
   const config = getConfig();
 
   if (config.storageDriver === "s3") {
-    // TODO: S3 implementation for production (Milestone D)
-    throw new Error("S3 storage not yet implemented — use STORAGE_DRIVER=local");
+    _storage = new S3FileStorage();
+  } else {
+    _storage = new LocalFileStorage(config.storageLocalDir);
   }
 
-  _storage = new LocalFileStorage(config.storageLocalDir);
   return _storage;
 }

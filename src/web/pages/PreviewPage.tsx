@@ -23,6 +23,7 @@ import {
   getProducts,
   getIssues,
   createPlan,
+  executeImport,
   type CatalogSummary,
   type ProductListItem,
   type IssuesResponse,
@@ -32,9 +33,10 @@ import {
 type Props = {
   catalogId: string;
   onBack: () => void;
+  onExecute?: (operationId: string) => void;
 };
 
-export function PreviewPage({ catalogId, onBack }: Props) {
+export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
   const [catalog, setCatalog] = useState<CatalogSummary | null>(null);
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [issues, setIssues] = useState<IssuesResponse | null>(null);
@@ -241,8 +243,18 @@ export function PreviewPage({ catalogId, onBack }: Props) {
             onClose={() => setPlanModalOpen(false)}
             title="Import Plan"
             primaryAction={{
-              content: "Confirm (import not yet connected)",
-              disabled: true,
+              content: "Start Import",
+              onAction: async () => {
+                if (plan && onExecute) {
+                  try {
+                    await executeImport(plan.id);
+                    setPlanModalOpen(false);
+                    onExecute(plan.id);
+                  } catch (err) {
+                    setError((err as Error).message);
+                  }
+                }
+              },
             }}
             secondaryActions={[
               { content: "Cancel", onAction: () => setPlanModalOpen(false) },
@@ -271,8 +283,7 @@ export function PreviewPage({ catalogId, onBack }: Props) {
                 </BlockStack>
                 <Divider />
                 <Text as="p" variant="bodySm" tone="subdued">
-                  Existing products will not be modified. Actual Shopify
-                  product creation will be available in Milestone C.
+                  Existing products will not be modified.
                 </Text>
               </BlockStack>
             </Modal.Section>

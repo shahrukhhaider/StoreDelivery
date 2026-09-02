@@ -217,3 +217,60 @@ export async function createPlan(catalogId: string): Promise<PlanResponse> {
 export async function getPlan(catalogId: string): Promise<PlanResponse> {
   return request(`/catalogs/${catalogId}/plan`);
 }
+
+// ---------------------------------------------------------------------------
+// Import Operations
+// ---------------------------------------------------------------------------
+
+export type ImportStatus = {
+  id: string;
+  status: string;
+  plannedCount: number;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  progress: number;
+  createdAt?: string;
+  completedAt?: string | null;
+};
+
+export async function executeImport(operationId: string): Promise<{ id: string; status: string }> {
+  return request(`/imports/${operationId}/execute`, { method: "POST" });
+}
+
+export async function getImportStatus(operationId: string): Promise<ImportStatus> {
+  return request(`/imports/${operationId}`);
+}
+
+export type ImportItemEntry = {
+  id: string;
+  sourceProductKey: string;
+  action: string;
+  status: string;
+  shopifyProductId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+};
+
+export type ImportItemsResponse = {
+  operationId: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  items: ImportItemEntry[];
+};
+
+export async function getImportItems(
+  operationId: string,
+  page = 1,
+  statusFilter?: string,
+): Promise<ImportItemsResponse> {
+  let url = `/imports/${operationId}/items?page=${page}`;
+  if (statusFilter) url += `&status=${statusFilter}`;
+  return request(url);
+}
+
+export async function retryImport(operationId: string): Promise<{ id: string; status: string }> {
+  return request(`/imports/${operationId}/retry`, { method: "POST" });
+}

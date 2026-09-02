@@ -1,0 +1,33 @@
+# Shopify App Configuration
+# See: https://shopify.dev/docs/apps/tools/cli/configuration
+
+name = "StoreKeeper"
+client_id = "" # Set from Shopify Partners Dashboard
+application_url = "https://your-app-domain.com"
+embedded = true
+
+[access_scopes]
+scopes = "write_products,read_products"
+
+[auth]
+redirect_urls = [
+  "https://your-app-domain.com/auth/callback",
+]
+
+[webhooks]
+api_version = "2024-10"
+
+  [webhooks.privacy_compliance]
+  customer_data_request_url = "https://your-app-domain.com/webhooks/customers/data_request"
+  customer_deletion_url = "https://your-app-domain.com/webhooks/customers/redact"
+  shop_deletion_url = "https://your-app-domain.com/webhooks/shop/redact"
+
+[app_proxy]
+# Not used in V0
+
+[pos]
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "" # Set to your development store
