@@ -23,37 +23,50 @@ export function requestLogger(req: Request, _res: Response, next: NextFunction):
  * Ensures the shop record exists in DB (creates if needed for dev mode).
  */
 export function shopScope(req: Request, _res: Response, next: NextFunction): void {
-  const shopId =
+  const rawShopId =
     (req.headers["x-shop-id"] as string) ||
     (req.query.shopId as string) ||
     "dev_shop";
 
-  (req as Request & { shopId: string }).shopId = shopId;
+  // Map the raw identifier to a shop domain for DB lookup
+  const shopDomain = rawShopId.includes(".myshopify.com")
+    ? rawShopId
+    : rawShopId === "dev_shop"
+      ? "dev.myshopify.com"
+      : `${rawShopId}.myshopify.com`;
 
-  // Ensure shop record exists (lazy upsert)
-  ensureShopExists(shopId).then(() => next()).catch(next);
+  // Ensure shop exists and resolve to the real DB id
+  ensureShopExists(shopDomain)
+    .then((dbId) => {
+      (req as Request & { shopId: string }).shopId = dbId;
+      next();
+    })
+    .catch(next);
 }
 
 const ensuredShops = new Set<string>();
+const shopIdCache = new Map<string, string>();
 
-async function ensureShopExists(shopId: string): Promise<void> {
-  if (ensuredShops.has(shopId)) return;
+async function ensureShopExists(shopDomain: string): Promise<string> {
+  const cached = shopIdCache.get(shopDomain);
+  if (cached) return cached;
 
   const { getPrisma } = await import("../db.js");
   const prisma = getPrisma();
 
-  await prisma.shop.upsert({
-    where: { id: shopId },
+  const shop = await prisma.shop.upsert({
+    where: { shopDomain },
     create: {
-      id: shopId,
-      shopDomain: shopId === "dev_shop" ? "dev.myshopify.com" : `${shopId}.myshopify.com`,
+      shopDomain,
       encryptedAccessToken: "dev-token",
       scopes: "write_products,read_products",
     },
     update: {},
+    select: { id: true },
   });
 
-  ensuredShops.add(shopId);
+  shopIdCache.set(shopDomain, shop.id);
+  return shop.id;
 }
 
 /**
