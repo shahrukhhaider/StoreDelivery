@@ -159,8 +159,8 @@ describe("processCatalog — end-to-end", () => {
 
     // Should still parse and produce products
     expect(result.catalog.products.length).toBe(5);
-    // Many columns won't be mapped
-    expect(result.mappingResult.unmapped.length).toBeGreaterThan(0);
+    // Some columns may be mapped via multilingual aliases, some won't
+    expect(result.mappingResult.mappings.length).toBeGreaterThan(0);
   });
 
   it("generates stable fingerprints for same schema", async () => {

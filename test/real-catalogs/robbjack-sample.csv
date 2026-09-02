@@ -1,0 +1,22 @@
+# RobbJack A1-201-04 — ISO 13399 tool item data
+ISO 13399 code,Parameter,Value (in),Value (mm),Value
+CZC,Item identifier (part number),,,A1-201-04
+DC,Cutting diameter,0.125,3.175,
+DCX,Maximum cutting diameter,0.124,3.1496,
+DMM,Shank diameter,0.125,3.175,
+APMX,Maximum depth of cut / length of cut,0.1875,4.7625,
+OAL,Overall length,1.5,38.1,
+SDL,Reach / length below shank,,,
+ND,Neck diameter,,,
+LN,Neck length,,,
+RE,Corner radius,,,
+CHW,Corner chamfer width,0.005,0.127,
+KCH,Chamfer angle,45,45,45 deg
+NOF,Number of flutes,,,2
+FHA,Helix angle,30,30,30 deg
+FHH,Helix hand,,,RHS
+SIG,Point angle,,,
+,Shank blend angle,,,
+,Feather blend (cutting dia to neck dia),,,
+DC tol,Diameter tolerance,,,-0.0010/-0.0015
+CCMS,Country of origin,,,US

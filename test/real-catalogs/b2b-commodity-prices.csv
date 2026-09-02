@@ -1,0 +1,101 @@
+Commodity Code,Commodity Name,UOM,Active,Source,Price Package,Bid Price,Ask Price,Last Updated
+CM-001,Aluminum Grade 2,USD/lb,Active,OTC,Premium,933.50,945.74,2024-02-15
+CM-002,Copper Grade 3,USD/ton,Active,Spot,Standard,1306.35,1334.43,2024-03-15
+CM-003,Zinc Grade 4,EUR/mt,Active,Forward,Enterprise,909.00,953.34,2024-04-15
+CM-004,Nickel Grade 5,GBP/ton,Active,Assessment,Base,2359.76,2399.15,2024-05-15
+CM-005,Tin Grade 1,USD/mt,Active,Exchange,Premium,2716.25,2752.76,2024-06-15
+CM-006,Lead Grade 2,USD/lb,Active,OTC,Standard,1262.29,1274.68,2024-07-15
+CM-007,Steel HRC Grade 3,USD/ton,Active,Spot,Enterprise,955.30,974.06,2024-08-15
+CM-008,Aluminum Grade 4,EUR/mt,Active,Forward,Base,1078.44,1119.20,2024-09-15
+CM-009,Copper Grade 5,GBP/ton,Active,Assessment,Premium,944.85,951.61,2024-10-15
+CM-010,Zinc Grade 1,USD/mt,Inactive,Exchange,Standard,1329.70,1342.68,2024-11-15
+CM-011,Nickel Grade 2,USD/lb,Active,OTC,Enterprise,1523.58,1533.64,2024-12-15
+CM-012,Tin Grade 3,USD/ton,Active,Spot,Base,2380.66,2393.34,2024-01-15
+CM-013,Lead Grade 4,EUR/mt,Active,Forward,Premium,1925.06,1953.30,2024-02-15
+CM-014,Steel HRC Grade 5,GBP/ton,Active,Assessment,Standard,993.07,1035.36,2024-03-15
+CM-015,Aluminum Grade 1,USD/mt,Active,Exchange,Enterprise,1572.75,1580.20,2024-04-15
+CM-016,Copper Grade 2,USD/lb,Active,OTC,Base,1298.81,1329.72,2024-05-15
+CM-017,Zinc Grade 3,USD/ton,Active,Spot,Premium,1733.39,1762.00,2024-06-15
+CM-018,Nickel Grade 4,EUR/mt,Active,Forward,Standard,2366.66,2393.22,2024-07-15
+CM-019,Tin Grade 5,GBP/ton,Active,Assessment,Enterprise,2410.70,2412.34,2024-08-15
+CM-020,Lead Grade 1,USD/mt,Inactive,Exchange,Base,1168.72,1178.73,2024-09-15
+CM-021,Steel HRC Grade 2,USD/lb,Active,OTC,Premium,1161.71,1178.19,2024-10-15
+CM-022,Aluminum Grade 3,USD/ton,Active,Spot,Standard,1216.62,1226.73,2024-11-15
+CM-023,Copper Grade 4,EUR/mt,Active,Forward,Enterprise,2701.92,2723.00,2024-12-15
+CM-024,Zinc Grade 5,GBP/ton,Active,Assessment,Base,2372.22,2372.79,2024-01-15
+CM-025,Nickel Grade 1,USD/mt,Active,Exchange,Premium,2620.50,2669.69,2024-02-15
+CM-026,Tin Grade 2,USD/lb,Active,OTC,Standard,1569.11,1589.06,2024-03-15
+CM-027,Lead Grade 3,USD/ton,Active,Spot,Enterprise,2305.73,2353.05,2024-04-15
+CM-028,Steel HRC Grade 4,EUR/mt,Active,Forward,Base,2371.02,2417.38,2024-05-15
+CM-029,Aluminum Grade 5,GBP/ton,Active,Assessment,Premium,2416.50,2461.29,2024-06-15
+CM-030,Copper Grade 1,USD/mt,Inactive,Exchange,Standard,853.48,867.98,2024-07-15
+CM-031,Zinc Grade 2,USD/lb,Active,OTC,Enterprise,2712.10,2749.63,2024-08-15
+CM-032,Nickel Grade 3,USD/ton,Active,Spot,Base,2369.16,2414.70,2024-09-15
+CM-033,Tin Grade 4,EUR/mt,Active,Forward,Premium,1195.04,1217.66,2024-10-15
+CM-034,Lead Grade 5,GBP/ton,Active,Assessment,Standard,1543.67,1579.75,2024-11-15
+CM-035,Steel HRC Grade 1,USD/mt,Active,Exchange,Enterprise,1747.60,1766.37,2024-12-15
+CM-036,Aluminum Grade 2,USD/lb,Active,OTC,Base,2284.99,2295.36,2024-01-15
+CM-037,Copper Grade 3,USD/ton,Active,Spot,Premium,888.97,897.96,2024-02-15
+CM-038,Zinc Grade 4,EUR/mt,Active,Forward,Standard,2414.42,2442.74,2024-03-15
+CM-039,Nickel Grade 5,GBP/ton,Active,Assessment,Enterprise,1646.75,1656.75,2024-04-15
+CM-040,Tin Grade 1,USD/mt,Inactive,Exchange,Base,899.44,941.60,2024-05-15
+CM-041,Lead Grade 2,USD/lb,Active,OTC,Premium,1311.04,1318.71,2024-06-15
+CM-042,Steel HRC Grade 3,USD/ton,Active,Spot,Standard,2345.91,2363.50,2024-07-15
+CM-043,Aluminum Grade 4,EUR/mt,Active,Forward,Enterprise,1386.38,1403.82,2024-08-15
+CM-044,Copper Grade 5,GBP/ton,Active,Assessment,Base,1389.78,1416.20,2024-09-15
+CM-045,Zinc Grade 1,USD/mt,Active,Exchange,Premium,2198.93,2218.92,2024-10-15
+CM-046,Nickel Grade 2,USD/lb,Active,OTC,Standard,1517.47,1535.47,2024-11-15
+CM-047,Tin Grade 3,USD/ton,Active,Spot,Enterprise,1203.03,1203.08,2024-12-15
+CM-048,Lead Grade 4,EUR/mt,Active,Forward,Base,1874.24,1912.07,2024-01-15
+CM-049,Steel HRC Grade 5,GBP/ton,Active,Assessment,Premium,1182.08,1221.12,2024-02-15
+CM-050,Aluminum Grade 1,USD/mt,Inactive,Exchange,Standard,1586.18,1630.52,2024-03-15
+CM-051,Copper Grade 2,USD/lb,Active,OTC,Enterprise,983.90,998.58,2024-04-15
+CM-052,Zinc Grade 3,USD/ton,Active,Spot,Base,1257.77,1296.55,2024-05-15
+CM-053,Nickel Grade 4,EUR/mt,Active,Forward,Premium,2026.87,2039.27,2024-06-15
+CM-054,Tin Grade 5,GBP/ton,Active,Assessment,Standard,1752.70,1765.86,2024-07-15
+CM-055,Lead Grade 1,USD/mt,Active,Exchange,Enterprise,2370.80,2374.97,2024-08-15
+CM-056,Steel HRC Grade 2,USD/lb,Active,OTC,Base,1627.30,1637.72,2024-09-15
+CM-057,Aluminum Grade 3,USD/ton,Active,Spot,Premium,1758.89,1772.74,2024-10-15
+CM-058,Copper Grade 4,EUR/mt,Active,Forward,Standard,2704.04,2750.32,2024-11-15
+CM-059,Zinc Grade 5,GBP/ton,Active,Assessment,Enterprise,2715.63,2730.01,2024-12-15
+CM-060,Nickel Grade 1,USD/mt,Inactive,Exchange,Base,1701.17,1703.24,2024-01-15
+CM-061,Tin Grade 2,USD/lb,Active,OTC,Premium,2059.03,2064.47,2024-02-15
+CM-062,Lead Grade 3,USD/ton,Active,Spot,Standard,1281.98,1286.55,2024-03-15
+CM-063,Steel HRC Grade 4,EUR/mt,Active,Forward,Enterprise,839.66,889.41,2024-04-15
+CM-064,Aluminum Grade 5,GBP/ton,Active,Assessment,Base,1457.79,1487.13,2024-05-15
+CM-065,Copper Grade 1,USD/mt,Active,Exchange,Premium,1581.78,1623.85,2024-06-15
+CM-066,Zinc Grade 2,USD/lb,Active,OTC,Standard,1345.48,1355.60,2024-07-15
+CM-067,Nickel Grade 3,USD/ton,Active,Spot,Enterprise,1753.48,1769.11,2024-08-15
+CM-068,Tin Grade 4,EUR/mt,Active,Forward,Base,1275.51,1285.05,2024-09-15
+CM-069,Lead Grade 5,GBP/ton,Active,Assessment,Premium,1859.52,1893.61,2024-10-15
+CM-070,Steel HRC Grade 1,USD/mt,Inactive,Exchange,Standard,935.95,981.70,2024-11-15
+CM-071,Aluminum Grade 2,USD/lb,Active,OTC,Enterprise,1609.36,1626.59,2024-12-15
+CM-072,Copper Grade 3,USD/ton,Active,Spot,Base,1108.14,1132.20,2024-01-15
+CM-073,Zinc Grade 4,EUR/mt,Active,Forward,Premium,964.02,968.56,2024-02-15
+CM-074,Nickel Grade 5,GBP/ton,Active,Assessment,Standard,2456.80,2460.70,2024-03-15
+CM-075,Tin Grade 1,USD/mt,Active,Exchange,Enterprise,1424.60,1447.65,2024-04-15
+CM-076,Lead Grade 2,USD/lb,Active,OTC,Base,1399.55,1440.39,2024-05-15
+CM-077,Steel HRC Grade 3,USD/ton,Active,Spot,Premium,1152.46,1166.20,2024-06-15
+CM-078,Aluminum Grade 4,EUR/mt,Active,Forward,Standard,1866.71,1879.36,2024-07-15
+CM-079,Copper Grade 5,GBP/ton,Active,Assessment,Enterprise,2309.44,2342.95,2024-08-15
+CM-080,Zinc Grade 1,USD/mt,Inactive,Exchange,Base,2610.43,2658.92,2024-09-15
+CM-081,Nickel Grade 2,USD/lb,Active,OTC,Premium,2361.33,2372.82,2024-10-15
+CM-082,Tin Grade 3,USD/ton,Active,Spot,Standard,2167.69,2208.33,2024-11-15
+CM-083,Lead Grade 4,EUR/mt,Active,Forward,Enterprise,912.07,934.07,2024-12-15
+CM-084,Steel HRC Grade 5,GBP/ton,Active,Assessment,Base,934.20,944.84,2024-01-15
+CM-085,Aluminum Grade 1,USD/mt,Active,Exchange,Premium,1368.53,1406.65,2024-02-15
+CM-086,Copper Grade 2,USD/lb,Active,OTC,Standard,2218.55,2263.54,2024-03-15
+CM-087,Zinc Grade 3,USD/ton,Active,Spot,Enterprise,1035.68,1050.59,2024-04-15
+CM-088,Nickel Grade 4,EUR/mt,Active,Forward,Base,1456.43,1501.11,2024-05-15
+CM-089,Tin Grade 5,GBP/ton,Active,Assessment,Premium,2662.97,2668.79,2024-06-15
+CM-090,Lead Grade 1,USD/mt,Inactive,Exchange,Standard,1370.30,1392.31,2024-07-15
+CM-091,Steel HRC Grade 2,USD/lb,Active,OTC,Enterprise,2779.96,2816.18,2024-08-15
+CM-092,Aluminum Grade 3,USD/ton,Active,Spot,Base,1766.35,1804.00,2024-09-15
+CM-093,Copper Grade 4,EUR/mt,Active,Forward,Premium,2604.38,2624.82,2024-10-15
+CM-094,Zinc Grade 5,GBP/ton,Active,Assessment,Standard,822.15,834.00,2024-11-15
+CM-095,Nickel Grade 1,USD/mt,Active,Exchange,Enterprise,2433.04,2477.73,2024-12-15
+CM-096,Tin Grade 2,USD/lb,Active,OTC,Base,2150.75,2157.84,2024-01-15
+CM-097,Lead Grade 3,USD/ton,Active,Spot,Premium,2637.26,2665.81,2024-02-15
+CM-098,Steel HRC Grade 4,EUR/mt,Active,Forward,Standard,2247.55,2262.28,2024-03-15
+CM-099,Aluminum Grade 5,GBP/ton,Active,Assessment,Enterprise,2679.20,2710.37,2024-04-15
+CM-100,Copper Grade 1,USD/mt,Inactive,Exchange,Base,912.49,938.99,2024-05-15

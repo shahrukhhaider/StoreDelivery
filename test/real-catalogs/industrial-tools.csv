@@ -1,0 +1,201 @@
+Part Number,Description,Category,Material,Diameter (in),Length (in),Flutes,Helix Angle,Price,Country of Origin,Image URL,Weight (lbs)
+RJ-0001,"Ball Nose 0.0938 in 3FL HSS",Ball Nose,HSS,0.0938,2.0,3,35,13.25,US,https://images.example.com/tools/rj-0001.jpg,0.015
+RJ-0002,"Corner Radius 0.1250 in 4FL Cobalt",Corner Radius,Cobalt,0.1250,2.5,4,40,14.00,US,https://images.example.com/tools/rj-0002.jpg,0.020
+RJ-0003,"Slitting Saw 0.1563 in 5FL PCD",Slitting Saw,PCD,0.1563,3.0,5,45,14.75,DE,https://images.example.com/tools/rj-0003.jpg,0.025
+RJ-0004,"Drill 0.1875 in 2FL CBN",Drill,CBN,0.1875,3.5,2,30,15.50,JP,https://images.example.com/tools/rj-0004.jpg,0.030
+RJ-0005,"Reamer 0.2188 in 3FL Carbide",Reamer,Carbide,0.2188,4.0,3,35,16.25,US,https://images.example.com/tools/rj-0005.jpg,0.035
+RJ-0006,"End Mill 0.2500 in 4FL HSS",End Mill,HSS,0.2500,4.5,4,40,17.00,US,https://images.example.com/tools/rj-0006.jpg,0.040
+RJ-0007,"Ball Nose 0.2813 in 5FL Cobalt",Ball Nose,Cobalt,0.2813,5.0,5,45,17.75,US,https://images.example.com/tools/rj-0007.jpg,0.045
+RJ-0008,"Corner Radius 0.3125 in 2FL PCD",Corner Radius,PCD,0.3125,5.5,2,30,18.50,DE,https://images.example.com/tools/rj-0008.jpg,0.050
+RJ-0009,"Slitting Saw 0.3438 in 3FL CBN",Slitting Saw,CBN,0.3438,6.0,3,35,19.25,JP,https://images.example.com/tools/rj-0009.jpg,0.055
+RJ-0010,"Drill 0.3750 in 4FL Carbide",Drill,Carbide,0.3750,1.5,4,40,20.00,US,https://images.example.com/tools/rj-0010.jpg,0.060
+RJ-0011,"Reamer 0.4063 in 5FL HSS",Reamer,HSS,0.4063,2.0,5,45,20.75,US,https://images.example.com/tools/rj-0011.jpg,0.065
+RJ-0012,"End Mill 0.4375 in 2FL Cobalt",End Mill,Cobalt,0.4375,2.5,2,30,21.50,US,https://images.example.com/tools/rj-0012.jpg,0.070
+RJ-0013,"Ball Nose 0.4688 in 3FL PCD",Ball Nose,PCD,0.4688,3.0,3,35,22.25,DE,https://images.example.com/tools/rj-0013.jpg,0.075
+RJ-0014,"Corner Radius 0.5000 in 4FL CBN",Corner Radius,CBN,0.5000,3.5,4,40,23.00,JP,https://images.example.com/tools/rj-0014.jpg,0.080
+RJ-0015,"Slitting Saw 0.5313 in 5FL Carbide",Slitting Saw,Carbide,0.5313,4.0,5,45,23.75,US,https://images.example.com/tools/rj-0015.jpg,0.085
+RJ-0016,"Drill 0.5625 in 2FL HSS",Drill,HSS,0.5625,4.5,2,30,24.50,US,https://images.example.com/tools/rj-0016.jpg,0.090
+RJ-0017,"Reamer 0.5938 in 3FL Cobalt",Reamer,Cobalt,0.5938,5.0,3,35,25.25,US,https://images.example.com/tools/rj-0017.jpg,0.095
+RJ-0018,"End Mill 0.6250 in 4FL PCD",End Mill,PCD,0.6250,5.5,4,40,26.00,DE,https://images.example.com/tools/rj-0018.jpg,0.100
+RJ-0019,"Ball Nose 0.6563 in 5FL CBN",Ball Nose,CBN,0.6563,6.0,5,45,26.75,JP,https://images.example.com/tools/rj-0019.jpg,0.105
+RJ-0020,"Corner Radius 0.6875 in 2FL Carbide",Corner Radius,Carbide,0.6875,1.5,2,30,27.50,US,https://images.example.com/tools/rj-0020.jpg,0.010
+RJ-0021,"Slitting Saw 0.7188 in 3FL HSS",Slitting Saw,HSS,0.7188,2.0,3,35,28.25,US,https://images.example.com/tools/rj-0021.jpg,0.015
+RJ-0022,"Drill 0.7500 in 4FL Cobalt",Drill,Cobalt,0.7500,2.5,4,40,29.00,US,https://images.example.com/tools/rj-0022.jpg,0.020
+RJ-0023,"Reamer 0.7813 in 5FL PCD",Reamer,PCD,0.7813,3.0,5,45,29.75,DE,https://images.example.com/tools/rj-0023.jpg,0.025
+RJ-0024,"End Mill 0.8125 in 2FL CBN",End Mill,CBN,0.8125,3.5,2,30,30.50,JP,https://images.example.com/tools/rj-0024.jpg,0.030
+RJ-0025,"Ball Nose 0.8438 in 3FL Carbide",Ball Nose,Carbide,0.8438,4.0,3,35,31.25,US,https://images.example.com/tools/rj-0025.jpg,0.035
+RJ-0026,"Corner Radius 0.8750 in 4FL HSS",Corner Radius,HSS,0.8750,4.5,4,40,32.00,US,https://images.example.com/tools/rj-0026.jpg,0.040
+RJ-0027,"Slitting Saw 0.9063 in 5FL Cobalt",Slitting Saw,Cobalt,0.9063,5.0,5,45,32.75,US,https://images.example.com/tools/rj-0027.jpg,0.045
+RJ-0028,"Drill 0.9375 in 2FL PCD",Drill,PCD,0.9375,5.5,2,30,33.50,DE,https://images.example.com/tools/rj-0028.jpg,0.050
+RJ-0029,"Reamer 0.9688 in 3FL CBN",Reamer,CBN,0.9688,6.0,3,35,34.25,JP,https://images.example.com/tools/rj-0029.jpg,0.055
+RJ-0030,"End Mill 1.0000 in 4FL Carbide",End Mill,Carbide,1.0000,1.5,4,40,35.00,US,https://images.example.com/tools/rj-0030.jpg,0.060
+RJ-0031,"Ball Nose 1.0313 in 5FL HSS",Ball Nose,HSS,1.0313,2.0,5,45,35.75,US,https://images.example.com/tools/rj-0031.jpg,0.065
+RJ-0032,"Corner Radius 1.0625 in 2FL Cobalt",Corner Radius,Cobalt,1.0625,2.5,2,30,36.50,US,https://images.example.com/tools/rj-0032.jpg,0.070
+RJ-0033,"Slitting Saw 1.0938 in 3FL PCD",Slitting Saw,PCD,1.0938,3.0,3,35,37.25,DE,https://images.example.com/tools/rj-0033.jpg,0.075
+RJ-0034,"Drill 1.1250 in 4FL CBN",Drill,CBN,1.1250,3.5,4,40,38.00,JP,https://images.example.com/tools/rj-0034.jpg,0.080
+RJ-0035,"Reamer 1.1563 in 5FL Carbide",Reamer,Carbide,1.1563,4.0,5,45,38.75,US,https://images.example.com/tools/rj-0035.jpg,0.085
+RJ-0036,"End Mill 1.1875 in 2FL HSS",End Mill,HSS,1.1875,4.5,2,30,39.50,US,https://images.example.com/tools/rj-0036.jpg,0.090
+RJ-0037,"Ball Nose 1.2188 in 3FL Cobalt",Ball Nose,Cobalt,1.2188,5.0,3,35,40.25,US,https://images.example.com/tools/rj-0037.jpg,0.095
+RJ-0038,"Corner Radius 1.2500 in 4FL PCD",Corner Radius,PCD,1.2500,5.5,4,40,41.00,DE,https://images.example.com/tools/rj-0038.jpg,0.100
+RJ-0039,"Slitting Saw 1.2813 in 5FL CBN",Slitting Saw,CBN,1.2813,6.0,5,45,41.75,JP,https://images.example.com/tools/rj-0039.jpg,0.105
+RJ-0040,"Drill 0.0625 in 2FL Carbide",Drill,Carbide,0.0625,1.5,2,30,42.50,US,https://images.example.com/tools/rj-0040.jpg,0.010
+RJ-0041,"Reamer 0.0938 in 3FL HSS",Reamer,HSS,0.0938,2.0,3,35,43.25,US,https://images.example.com/tools/rj-0041.jpg,0.015
+RJ-0042,"End Mill 0.1250 in 4FL Cobalt",End Mill,Cobalt,0.1250,2.5,4,40,44.00,US,https://images.example.com/tools/rj-0042.jpg,0.020
+RJ-0043,"Ball Nose 0.1563 in 5FL PCD",Ball Nose,PCD,0.1563,3.0,5,45,44.75,DE,https://images.example.com/tools/rj-0043.jpg,0.025
+RJ-0044,"Corner Radius 0.1875 in 2FL CBN",Corner Radius,CBN,0.1875,3.5,2,30,45.50,JP,https://images.example.com/tools/rj-0044.jpg,0.030
+RJ-0045,"Slitting Saw 0.2188 in 3FL Carbide",Slitting Saw,Carbide,0.2188,4.0,3,35,46.25,US,https://images.example.com/tools/rj-0045.jpg,0.035
+RJ-0046,"Drill 0.2500 in 4FL HSS",Drill,HSS,0.2500,4.5,4,40,47.00,US,https://images.example.com/tools/rj-0046.jpg,0.040
+RJ-0047,"Reamer 0.2813 in 5FL Cobalt",Reamer,Cobalt,0.2813,5.0,5,45,47.75,US,https://images.example.com/tools/rj-0047.jpg,0.045
+RJ-0048,"End Mill 0.3125 in 2FL PCD",End Mill,PCD,0.3125,5.5,2,30,48.50,DE,https://images.example.com/tools/rj-0048.jpg,0.050
+RJ-0049,"Ball Nose 0.3438 in 3FL CBN",Ball Nose,CBN,0.3438,6.0,3,35,49.25,JP,https://images.example.com/tools/rj-0049.jpg,0.055
+RJ-0050,"Corner Radius 0.3750 in 4FL Carbide",Corner Radius,Carbide,0.3750,1.5,4,40,50.00,US,https://images.example.com/tools/rj-0050.jpg,0.060
+RJ-0051,"Slitting Saw 0.4063 in 5FL HSS",Slitting Saw,HSS,0.4063,2.0,5,45,50.75,US,https://images.example.com/tools/rj-0051.jpg,0.065
+RJ-0052,"Drill 0.4375 in 2FL Cobalt",Drill,Cobalt,0.4375,2.5,2,30,51.50,US,https://images.example.com/tools/rj-0052.jpg,0.070
+RJ-0053,"Reamer 0.4688 in 3FL PCD",Reamer,PCD,0.4688,3.0,3,35,52.25,DE,https://images.example.com/tools/rj-0053.jpg,0.075
+RJ-0054,"End Mill 0.5000 in 4FL CBN",End Mill,CBN,0.5000,3.5,4,40,53.00,JP,https://images.example.com/tools/rj-0054.jpg,0.080
+RJ-0055,"Ball Nose 0.5313 in 5FL Carbide",Ball Nose,Carbide,0.5313,4.0,5,45,53.75,US,https://images.example.com/tools/rj-0055.jpg,0.085
+RJ-0056,"Corner Radius 0.5625 in 2FL HSS",Corner Radius,HSS,0.5625,4.5,2,30,54.50,US,https://images.example.com/tools/rj-0056.jpg,0.090
+RJ-0057,"Slitting Saw 0.5938 in 3FL Cobalt",Slitting Saw,Cobalt,0.5938,5.0,3,35,55.25,US,https://images.example.com/tools/rj-0057.jpg,0.095
+RJ-0058,"Drill 0.6250 in 4FL PCD",Drill,PCD,0.6250,5.5,4,40,56.00,DE,https://images.example.com/tools/rj-0058.jpg,0.100
+RJ-0059,"Reamer 0.6563 in 5FL CBN",Reamer,CBN,0.6563,6.0,5,45,56.75,JP,https://images.example.com/tools/rj-0059.jpg,0.105
+RJ-0060,"End Mill 0.6875 in 2FL Carbide",End Mill,Carbide,0.6875,1.5,2,30,57.50,US,https://images.example.com/tools/rj-0060.jpg,0.010
+RJ-0061,"Ball Nose 0.7188 in 3FL HSS",Ball Nose,HSS,0.7188,2.0,3,35,58.25,US,https://images.example.com/tools/rj-0061.jpg,0.015
+RJ-0062,"Corner Radius 0.7500 in 4FL Cobalt",Corner Radius,Cobalt,0.7500,2.5,4,40,59.00,US,https://images.example.com/tools/rj-0062.jpg,0.020
+RJ-0063,"Slitting Saw 0.7813 in 5FL PCD",Slitting Saw,PCD,0.7813,3.0,5,45,59.75,DE,https://images.example.com/tools/rj-0063.jpg,0.025
+RJ-0064,"Drill 0.8125 in 2FL CBN",Drill,CBN,0.8125,3.5,2,30,60.50,JP,https://images.example.com/tools/rj-0064.jpg,0.030
+RJ-0065,"Reamer 0.8438 in 3FL Carbide",Reamer,Carbide,0.8438,4.0,3,35,61.25,US,https://images.example.com/tools/rj-0065.jpg,0.035
+RJ-0066,"End Mill 0.8750 in 4FL HSS",End Mill,HSS,0.8750,4.5,4,40,62.00,US,https://images.example.com/tools/rj-0066.jpg,0.040
+RJ-0067,"Ball Nose 0.9063 in 5FL Cobalt",Ball Nose,Cobalt,0.9063,5.0,5,45,62.75,US,https://images.example.com/tools/rj-0067.jpg,0.045
+RJ-0068,"Corner Radius 0.9375 in 2FL PCD",Corner Radius,PCD,0.9375,5.5,2,30,63.50,DE,https://images.example.com/tools/rj-0068.jpg,0.050
+RJ-0069,"Slitting Saw 0.9688 in 3FL CBN",Slitting Saw,CBN,0.9688,6.0,3,35,64.25,JP,https://images.example.com/tools/rj-0069.jpg,0.055
+RJ-0070,"Drill 1.0000 in 4FL Carbide",Drill,Carbide,1.0000,1.5,4,40,65.00,US,https://images.example.com/tools/rj-0070.jpg,0.060
+RJ-0071,"Reamer 1.0313 in 5FL HSS",Reamer,HSS,1.0313,2.0,5,45,65.75,US,https://images.example.com/tools/rj-0071.jpg,0.065
+RJ-0072,"End Mill 1.0625 in 2FL Cobalt",End Mill,Cobalt,1.0625,2.5,2,30,66.50,US,https://images.example.com/tools/rj-0072.jpg,0.070
+RJ-0073,"Ball Nose 1.0938 in 3FL PCD",Ball Nose,PCD,1.0938,3.0,3,35,67.25,DE,https://images.example.com/tools/rj-0073.jpg,0.075
+RJ-0074,"Corner Radius 1.1250 in 4FL CBN",Corner Radius,CBN,1.1250,3.5,4,40,68.00,JP,https://images.example.com/tools/rj-0074.jpg,0.080
+RJ-0075,"Slitting Saw 1.1563 in 5FL Carbide",Slitting Saw,Carbide,1.1563,4.0,5,45,68.75,US,https://images.example.com/tools/rj-0075.jpg,0.085
+RJ-0076,"Drill 1.1875 in 2FL HSS",Drill,HSS,1.1875,4.5,2,30,69.50,US,https://images.example.com/tools/rj-0076.jpg,0.090
+RJ-0077,"Reamer 1.2188 in 3FL Cobalt",Reamer,Cobalt,1.2188,5.0,3,35,70.25,US,https://images.example.com/tools/rj-0077.jpg,0.095
+RJ-0078,"End Mill 1.2500 in 4FL PCD",End Mill,PCD,1.2500,5.5,4,40,71.00,DE,https://images.example.com/tools/rj-0078.jpg,0.100
+RJ-0079,"Ball Nose 1.2813 in 5FL CBN",Ball Nose,CBN,1.2813,6.0,5,45,71.75,JP,https://images.example.com/tools/rj-0079.jpg,0.105
+RJ-0080,"Corner Radius 0.0625 in 2FL Carbide",Corner Radius,Carbide,0.0625,1.5,2,30,72.50,US,https://images.example.com/tools/rj-0080.jpg,0.010
+RJ-0081,"Slitting Saw 0.0938 in 3FL HSS",Slitting Saw,HSS,0.0938,2.0,3,35,73.25,US,https://images.example.com/tools/rj-0081.jpg,0.015
+RJ-0082,"Drill 0.1250 in 4FL Cobalt",Drill,Cobalt,0.1250,2.5,4,40,74.00,US,https://images.example.com/tools/rj-0082.jpg,0.020
+RJ-0083,"Reamer 0.1563 in 5FL PCD",Reamer,PCD,0.1563,3.0,5,45,74.75,DE,https://images.example.com/tools/rj-0083.jpg,0.025
+RJ-0084,"End Mill 0.1875 in 2FL CBN",End Mill,CBN,0.1875,3.5,2,30,75.50,JP,https://images.example.com/tools/rj-0084.jpg,0.030
+RJ-0085,"Ball Nose 0.2188 in 3FL Carbide",Ball Nose,Carbide,0.2188,4.0,3,35,76.25,US,https://images.example.com/tools/rj-0085.jpg,0.035
+RJ-0086,"Corner Radius 0.2500 in 4FL HSS",Corner Radius,HSS,0.2500,4.5,4,40,77.00,US,https://images.example.com/tools/rj-0086.jpg,0.040
+RJ-0087,"Slitting Saw 0.2813 in 5FL Cobalt",Slitting Saw,Cobalt,0.2813,5.0,5,45,77.75,US,https://images.example.com/tools/rj-0087.jpg,0.045
+RJ-0088,"Drill 0.3125 in 2FL PCD",Drill,PCD,0.3125,5.5,2,30,78.50,DE,https://images.example.com/tools/rj-0088.jpg,0.050
+RJ-0089,"Reamer 0.3438 in 3FL CBN",Reamer,CBN,0.3438,6.0,3,35,79.25,JP,https://images.example.com/tools/rj-0089.jpg,0.055
+RJ-0090,"End Mill 0.3750 in 4FL Carbide",End Mill,Carbide,0.3750,1.5,4,40,80.00,US,https://images.example.com/tools/rj-0090.jpg,0.060
+RJ-0091,"Ball Nose 0.4063 in 5FL HSS",Ball Nose,HSS,0.4063,2.0,5,45,80.75,US,https://images.example.com/tools/rj-0091.jpg,0.065
+RJ-0092,"Corner Radius 0.4375 in 2FL Cobalt",Corner Radius,Cobalt,0.4375,2.5,2,30,81.50,US,https://images.example.com/tools/rj-0092.jpg,0.070
+RJ-0093,"Slitting Saw 0.4688 in 3FL PCD",Slitting Saw,PCD,0.4688,3.0,3,35,82.25,DE,https://images.example.com/tools/rj-0093.jpg,0.075
+RJ-0094,"Drill 0.5000 in 4FL CBN",Drill,CBN,0.5000,3.5,4,40,83.00,JP,https://images.example.com/tools/rj-0094.jpg,0.080
+RJ-0095,"Reamer 0.5313 in 5FL Carbide",Reamer,Carbide,0.5313,4.0,5,45,83.75,US,https://images.example.com/tools/rj-0095.jpg,0.085
+RJ-0096,"End Mill 0.5625 in 2FL HSS",End Mill,HSS,0.5625,4.5,2,30,84.50,US,https://images.example.com/tools/rj-0096.jpg,0.090
+RJ-0097,"Ball Nose 0.5938 in 3FL Cobalt",Ball Nose,Cobalt,0.5938,5.0,3,35,85.25,US,https://images.example.com/tools/rj-0097.jpg,0.095
+RJ-0098,"Corner Radius 0.6250 in 4FL PCD",Corner Radius,PCD,0.6250,5.5,4,40,86.00,DE,https://images.example.com/tools/rj-0098.jpg,0.100
+RJ-0099,"Slitting Saw 0.6563 in 5FL CBN",Slitting Saw,CBN,0.6563,6.0,5,45,86.75,JP,https://images.example.com/tools/rj-0099.jpg,0.105
+RJ-0100,"Drill 0.6875 in 2FL Carbide",Drill,Carbide,0.6875,1.5,2,30,87.50,US,https://images.example.com/tools/rj-0100.jpg,0.010
+RJ-0101,"Reamer 0.7188 in 3FL HSS",Reamer,HSS,0.7188,2.0,3,35,88.25,US,https://images.example.com/tools/rj-0101.jpg,0.015
+RJ-0102,"End Mill 0.7500 in 4FL Cobalt",End Mill,Cobalt,0.7500,2.5,4,40,89.00,US,https://images.example.com/tools/rj-0102.jpg,0.020
+RJ-0103,"Ball Nose 0.7813 in 5FL PCD",Ball Nose,PCD,0.7813,3.0,5,45,89.75,DE,https://images.example.com/tools/rj-0103.jpg,0.025
+RJ-0104,"Corner Radius 0.8125 in 2FL CBN",Corner Radius,CBN,0.8125,3.5,2,30,90.50,JP,https://images.example.com/tools/rj-0104.jpg,0.030
+RJ-0105,"Slitting Saw 0.8438 in 3FL Carbide",Slitting Saw,Carbide,0.8438,4.0,3,35,91.25,US,https://images.example.com/tools/rj-0105.jpg,0.035
+RJ-0106,"Drill 0.8750 in 4FL HSS",Drill,HSS,0.8750,4.5,4,40,92.00,US,https://images.example.com/tools/rj-0106.jpg,0.040
+RJ-0107,"Reamer 0.9063 in 5FL Cobalt",Reamer,Cobalt,0.9063,5.0,5,45,92.75,US,https://images.example.com/tools/rj-0107.jpg,0.045
+RJ-0108,"End Mill 0.9375 in 2FL PCD",End Mill,PCD,0.9375,5.5,2,30,93.50,DE,https://images.example.com/tools/rj-0108.jpg,0.050
+RJ-0109,"Ball Nose 0.9688 in 3FL CBN",Ball Nose,CBN,0.9688,6.0,3,35,94.25,JP,https://images.example.com/tools/rj-0109.jpg,0.055
+RJ-0110,"Corner Radius 1.0000 in 4FL Carbide",Corner Radius,Carbide,1.0000,1.5,4,40,95.00,US,https://images.example.com/tools/rj-0110.jpg,0.060
+RJ-0111,"Slitting Saw 1.0313 in 5FL HSS",Slitting Saw,HSS,1.0313,2.0,5,45,95.75,US,https://images.example.com/tools/rj-0111.jpg,0.065
+RJ-0112,"Drill 1.0625 in 2FL Cobalt",Drill,Cobalt,1.0625,2.5,2,30,96.50,US,https://images.example.com/tools/rj-0112.jpg,0.070
+RJ-0113,"Reamer 1.0938 in 3FL PCD",Reamer,PCD,1.0938,3.0,3,35,97.25,DE,https://images.example.com/tools/rj-0113.jpg,0.075
+RJ-0114,"End Mill 1.1250 in 4FL CBN",End Mill,CBN,1.1250,3.5,4,40,98.00,JP,https://images.example.com/tools/rj-0114.jpg,0.080
+RJ-0115,"Ball Nose 1.1563 in 5FL Carbide",Ball Nose,Carbide,1.1563,4.0,5,45,98.75,US,https://images.example.com/tools/rj-0115.jpg,0.085
+RJ-0116,"Corner Radius 1.1875 in 2FL HSS",Corner Radius,HSS,1.1875,4.5,2,30,99.50,US,https://images.example.com/tools/rj-0116.jpg,0.090
+RJ-0117,"Slitting Saw 1.2188 in 3FL Cobalt",Slitting Saw,Cobalt,1.2188,5.0,3,35,100.25,US,https://images.example.com/tools/rj-0117.jpg,0.095
+RJ-0118,"Drill 1.2500 in 4FL PCD",Drill,PCD,1.2500,5.5,4,40,101.00,DE,https://images.example.com/tools/rj-0118.jpg,0.100
+RJ-0119,"Reamer 1.2813 in 5FL CBN",Reamer,CBN,1.2813,6.0,5,45,101.75,JP,https://images.example.com/tools/rj-0119.jpg,0.105
+RJ-0120,"End Mill 0.0625 in 2FL Carbide",End Mill,Carbide,0.0625,1.5,2,30,102.50,US,https://images.example.com/tools/rj-0120.jpg,0.010
+RJ-0121,"Ball Nose 0.0938 in 3FL HSS",Ball Nose,HSS,0.0938,2.0,3,35,103.25,US,https://images.example.com/tools/rj-0121.jpg,0.015
+RJ-0122,"Corner Radius 0.1250 in 4FL Cobalt",Corner Radius,Cobalt,0.1250,2.5,4,40,104.00,US,https://images.example.com/tools/rj-0122.jpg,0.020
+RJ-0123,"Slitting Saw 0.1563 in 5FL PCD",Slitting Saw,PCD,0.1563,3.0,5,45,104.75,DE,https://images.example.com/tools/rj-0123.jpg,0.025
+RJ-0124,"Drill 0.1875 in 2FL CBN",Drill,CBN,0.1875,3.5,2,30,105.50,JP,https://images.example.com/tools/rj-0124.jpg,0.030
+RJ-0125,"Reamer 0.2188 in 3FL Carbide",Reamer,Carbide,0.2188,4.0,3,35,106.25,US,https://images.example.com/tools/rj-0125.jpg,0.035
+RJ-0126,"End Mill 0.2500 in 4FL HSS",End Mill,HSS,0.2500,4.5,4,40,107.00,US,https://images.example.com/tools/rj-0126.jpg,0.040
+RJ-0127,"Ball Nose 0.2813 in 5FL Cobalt",Ball Nose,Cobalt,0.2813,5.0,5,45,107.75,US,https://images.example.com/tools/rj-0127.jpg,0.045
+RJ-0128,"Corner Radius 0.3125 in 2FL PCD",Corner Radius,PCD,0.3125,5.5,2,30,108.50,DE,https://images.example.com/tools/rj-0128.jpg,0.050
+RJ-0129,"Slitting Saw 0.3438 in 3FL CBN",Slitting Saw,CBN,0.3438,6.0,3,35,109.25,JP,https://images.example.com/tools/rj-0129.jpg,0.055
+RJ-0130,"Drill 0.3750 in 4FL Carbide",Drill,Carbide,0.3750,1.5,4,40,110.00,US,https://images.example.com/tools/rj-0130.jpg,0.060
+RJ-0131,"Reamer 0.4063 in 5FL HSS",Reamer,HSS,0.4063,2.0,5,45,110.75,US,https://images.example.com/tools/rj-0131.jpg,0.065
+RJ-0132,"End Mill 0.4375 in 2FL Cobalt",End Mill,Cobalt,0.4375,2.5,2,30,111.50,US,https://images.example.com/tools/rj-0132.jpg,0.070
+RJ-0133,"Ball Nose 0.4688 in 3FL PCD",Ball Nose,PCD,0.4688,3.0,3,35,112.25,DE,https://images.example.com/tools/rj-0133.jpg,0.075
+RJ-0134,"Corner Radius 0.5000 in 4FL CBN",Corner Radius,CBN,0.5000,3.5,4,40,113.00,JP,https://images.example.com/tools/rj-0134.jpg,0.080
+RJ-0135,"Slitting Saw 0.5313 in 5FL Carbide",Slitting Saw,Carbide,0.5313,4.0,5,45,113.75,US,https://images.example.com/tools/rj-0135.jpg,0.085
+RJ-0136,"Drill 0.5625 in 2FL HSS",Drill,HSS,0.5625,4.5,2,30,114.50,US,https://images.example.com/tools/rj-0136.jpg,0.090
+RJ-0137,"Reamer 0.5938 in 3FL Cobalt",Reamer,Cobalt,0.5938,5.0,3,35,115.25,US,https://images.example.com/tools/rj-0137.jpg,0.095
+RJ-0138,"End Mill 0.6250 in 4FL PCD",End Mill,PCD,0.6250,5.5,4,40,116.00,DE,https://images.example.com/tools/rj-0138.jpg,0.100
+RJ-0139,"Ball Nose 0.6563 in 5FL CBN",Ball Nose,CBN,0.6563,6.0,5,45,116.75,JP,https://images.example.com/tools/rj-0139.jpg,0.105
+RJ-0140,"Corner Radius 0.6875 in 2FL Carbide",Corner Radius,Carbide,0.6875,1.5,2,30,117.50,US,https://images.example.com/tools/rj-0140.jpg,0.010
+RJ-0141,"Slitting Saw 0.7188 in 3FL HSS",Slitting Saw,HSS,0.7188,2.0,3,35,118.25,US,https://images.example.com/tools/rj-0141.jpg,0.015
+RJ-0142,"Drill 0.7500 in 4FL Cobalt",Drill,Cobalt,0.7500,2.5,4,40,119.00,US,https://images.example.com/tools/rj-0142.jpg,0.020
+RJ-0143,"Reamer 0.7813 in 5FL PCD",Reamer,PCD,0.7813,3.0,5,45,119.75,DE,https://images.example.com/tools/rj-0143.jpg,0.025
+RJ-0144,"End Mill 0.8125 in 2FL CBN",End Mill,CBN,0.8125,3.5,2,30,120.50,JP,https://images.example.com/tools/rj-0144.jpg,0.030
+RJ-0145,"Ball Nose 0.8438 in 3FL Carbide",Ball Nose,Carbide,0.8438,4.0,3,35,121.25,US,https://images.example.com/tools/rj-0145.jpg,0.035
+RJ-0146,"Corner Radius 0.8750 in 4FL HSS",Corner Radius,HSS,0.8750,4.5,4,40,122.00,US,https://images.example.com/tools/rj-0146.jpg,0.040
+RJ-0147,"Slitting Saw 0.9063 in 5FL Cobalt",Slitting Saw,Cobalt,0.9063,5.0,5,45,122.75,US,https://images.example.com/tools/rj-0147.jpg,0.045
+RJ-0148,"Drill 0.9375 in 2FL PCD",Drill,PCD,0.9375,5.5,2,30,123.50,DE,https://images.example.com/tools/rj-0148.jpg,0.050
+RJ-0149,"Reamer 0.9688 in 3FL CBN",Reamer,CBN,0.9688,6.0,3,35,124.25,JP,https://images.example.com/tools/rj-0149.jpg,0.055
+RJ-0150,"End Mill 1.0000 in 4FL Carbide",End Mill,Carbide,1.0000,1.5,4,40,125.00,US,https://images.example.com/tools/rj-0150.jpg,0.060
+RJ-0151,"Ball Nose 1.0313 in 5FL HSS",Ball Nose,HSS,1.0313,2.0,5,45,125.75,US,https://images.example.com/tools/rj-0151.jpg,0.065
+RJ-0152,"Corner Radius 1.0625 in 2FL Cobalt",Corner Radius,Cobalt,1.0625,2.5,2,30,126.50,US,https://images.example.com/tools/rj-0152.jpg,0.070
+RJ-0153,"Slitting Saw 1.0938 in 3FL PCD",Slitting Saw,PCD,1.0938,3.0,3,35,127.25,DE,https://images.example.com/tools/rj-0153.jpg,0.075
+RJ-0154,"Drill 1.1250 in 4FL CBN",Drill,CBN,1.1250,3.5,4,40,128.00,JP,https://images.example.com/tools/rj-0154.jpg,0.080
+RJ-0155,"Reamer 1.1563 in 5FL Carbide",Reamer,Carbide,1.1563,4.0,5,45,128.75,US,https://images.example.com/tools/rj-0155.jpg,0.085
+RJ-0156,"End Mill 1.1875 in 2FL HSS",End Mill,HSS,1.1875,4.5,2,30,129.50,US,https://images.example.com/tools/rj-0156.jpg,0.090
+RJ-0157,"Ball Nose 1.2188 in 3FL Cobalt",Ball Nose,Cobalt,1.2188,5.0,3,35,130.25,US,https://images.example.com/tools/rj-0157.jpg,0.095
+RJ-0158,"Corner Radius 1.2500 in 4FL PCD",Corner Radius,PCD,1.2500,5.5,4,40,131.00,DE,https://images.example.com/tools/rj-0158.jpg,0.100
+RJ-0159,"Slitting Saw 1.2813 in 5FL CBN",Slitting Saw,CBN,1.2813,6.0,5,45,131.75,JP,https://images.example.com/tools/rj-0159.jpg,0.105
+RJ-0160,"Drill 0.0625 in 2FL Carbide",Drill,Carbide,0.0625,1.5,2,30,132.50,US,https://images.example.com/tools/rj-0160.jpg,0.010
+RJ-0161,"Reamer 0.0938 in 3FL HSS",Reamer,HSS,0.0938,2.0,3,35,133.25,US,https://images.example.com/tools/rj-0161.jpg,0.015
+RJ-0162,"End Mill 0.1250 in 4FL Cobalt",End Mill,Cobalt,0.1250,2.5,4,40,134.00,US,https://images.example.com/tools/rj-0162.jpg,0.020
+RJ-0163,"Ball Nose 0.1563 in 5FL PCD",Ball Nose,PCD,0.1563,3.0,5,45,134.75,DE,https://images.example.com/tools/rj-0163.jpg,0.025
+RJ-0164,"Corner Radius 0.1875 in 2FL CBN",Corner Radius,CBN,0.1875,3.5,2,30,135.50,JP,https://images.example.com/tools/rj-0164.jpg,0.030
+RJ-0165,"Slitting Saw 0.2188 in 3FL Carbide",Slitting Saw,Carbide,0.2188,4.0,3,35,136.25,US,https://images.example.com/tools/rj-0165.jpg,0.035
+RJ-0166,"Drill 0.2500 in 4FL HSS",Drill,HSS,0.2500,4.5,4,40,137.00,US,https://images.example.com/tools/rj-0166.jpg,0.040
+RJ-0167,"Reamer 0.2813 in 5FL Cobalt",Reamer,Cobalt,0.2813,5.0,5,45,137.75,US,https://images.example.com/tools/rj-0167.jpg,0.045
+RJ-0168,"End Mill 0.3125 in 2FL PCD",End Mill,PCD,0.3125,5.5,2,30,138.50,DE,https://images.example.com/tools/rj-0168.jpg,0.050
+RJ-0169,"Ball Nose 0.3438 in 3FL CBN",Ball Nose,CBN,0.3438,6.0,3,35,139.25,JP,https://images.example.com/tools/rj-0169.jpg,0.055
+RJ-0170,"Corner Radius 0.3750 in 4FL Carbide",Corner Radius,Carbide,0.3750,1.5,4,40,140.00,US,https://images.example.com/tools/rj-0170.jpg,0.060
+RJ-0171,"Slitting Saw 0.4063 in 5FL HSS",Slitting Saw,HSS,0.4063,2.0,5,45,140.75,US,https://images.example.com/tools/rj-0171.jpg,0.065
+RJ-0172,"Drill 0.4375 in 2FL Cobalt",Drill,Cobalt,0.4375,2.5,2,30,141.50,US,https://images.example.com/tools/rj-0172.jpg,0.070
+RJ-0173,"Reamer 0.4688 in 3FL PCD",Reamer,PCD,0.4688,3.0,3,35,142.25,DE,https://images.example.com/tools/rj-0173.jpg,0.075
+RJ-0174,"End Mill 0.5000 in 4FL CBN",End Mill,CBN,0.5000,3.5,4,40,143.00,JP,https://images.example.com/tools/rj-0174.jpg,0.080
+RJ-0175,"Ball Nose 0.5313 in 5FL Carbide",Ball Nose,Carbide,0.5313,4.0,5,45,143.75,US,https://images.example.com/tools/rj-0175.jpg,0.085
+RJ-0176,"Corner Radius 0.5625 in 2FL HSS",Corner Radius,HSS,0.5625,4.5,2,30,144.50,US,https://images.example.com/tools/rj-0176.jpg,0.090
+RJ-0177,"Slitting Saw 0.5938 in 3FL Cobalt",Slitting Saw,Cobalt,0.5938,5.0,3,35,145.25,US,https://images.example.com/tools/rj-0177.jpg,0.095
+RJ-0178,"Drill 0.6250 in 4FL PCD",Drill,PCD,0.6250,5.5,4,40,146.00,DE,https://images.example.com/tools/rj-0178.jpg,0.100
+RJ-0179,"Reamer 0.6563 in 5FL CBN",Reamer,CBN,0.6563,6.0,5,45,146.75,JP,https://images.example.com/tools/rj-0179.jpg,0.105
+RJ-0180,"End Mill 0.6875 in 2FL Carbide",End Mill,Carbide,0.6875,1.5,2,30,147.50,US,https://images.example.com/tools/rj-0180.jpg,0.010
+RJ-0181,"Ball Nose 0.7188 in 3FL HSS",Ball Nose,HSS,0.7188,2.0,3,35,148.25,US,https://images.example.com/tools/rj-0181.jpg,0.015
+RJ-0182,"Corner Radius 0.7500 in 4FL Cobalt",Corner Radius,Cobalt,0.7500,2.5,4,40,149.00,US,https://images.example.com/tools/rj-0182.jpg,0.020
+RJ-0183,"Slitting Saw 0.7813 in 5FL PCD",Slitting Saw,PCD,0.7813,3.0,5,45,149.75,DE,https://images.example.com/tools/rj-0183.jpg,0.025
+RJ-0184,"Drill 0.8125 in 2FL CBN",Drill,CBN,0.8125,3.5,2,30,150.50,JP,https://images.example.com/tools/rj-0184.jpg,0.030
+RJ-0185,"Reamer 0.8438 in 3FL Carbide",Reamer,Carbide,0.8438,4.0,3,35,151.25,US,https://images.example.com/tools/rj-0185.jpg,0.035
+RJ-0186,"End Mill 0.8750 in 4FL HSS",End Mill,HSS,0.8750,4.5,4,40,152.00,US,https://images.example.com/tools/rj-0186.jpg,0.040
+RJ-0187,"Ball Nose 0.9063 in 5FL Cobalt",Ball Nose,Cobalt,0.9063,5.0,5,45,152.75,US,https://images.example.com/tools/rj-0187.jpg,0.045
+RJ-0188,"Corner Radius 0.9375 in 2FL PCD",Corner Radius,PCD,0.9375,5.5,2,30,153.50,DE,https://images.example.com/tools/rj-0188.jpg,0.050
+RJ-0189,"Slitting Saw 0.9688 in 3FL CBN",Slitting Saw,CBN,0.9688,6.0,3,35,154.25,JP,https://images.example.com/tools/rj-0189.jpg,0.055
+RJ-0190,"Drill 1.0000 in 4FL Carbide",Drill,Carbide,1.0000,1.5,4,40,155.00,US,https://images.example.com/tools/rj-0190.jpg,0.060
+RJ-0191,"Reamer 1.0313 in 5FL HSS",Reamer,HSS,1.0313,2.0,5,45,155.75,US,https://images.example.com/tools/rj-0191.jpg,0.065
+RJ-0192,"End Mill 1.0625 in 2FL Cobalt",End Mill,Cobalt,1.0625,2.5,2,30,156.50,US,https://images.example.com/tools/rj-0192.jpg,0.070
+RJ-0193,"Ball Nose 1.0938 in 3FL PCD",Ball Nose,PCD,1.0938,3.0,3,35,157.25,DE,https://images.example.com/tools/rj-0193.jpg,0.075
+RJ-0194,"Corner Radius 1.1250 in 4FL CBN",Corner Radius,CBN,1.1250,3.5,4,40,158.00,JP,https://images.example.com/tools/rj-0194.jpg,0.080
+RJ-0195,"Slitting Saw 1.1563 in 5FL Carbide",Slitting Saw,Carbide,1.1563,4.0,5,45,158.75,US,https://images.example.com/tools/rj-0195.jpg,0.085
+RJ-0196,"Drill 1.1875 in 2FL HSS",Drill,HSS,1.1875,4.5,2,30,159.50,US,https://images.example.com/tools/rj-0196.jpg,0.090
+RJ-0197,"Reamer 1.2188 in 3FL Cobalt",Reamer,Cobalt,1.2188,5.0,3,35,160.25,US,https://images.example.com/tools/rj-0197.jpg,0.095
+RJ-0198,"End Mill 1.2500 in 4FL PCD",End Mill,PCD,1.2500,5.5,4,40,161.00,DE,https://images.example.com/tools/rj-0198.jpg,0.100
+RJ-0199,"Ball Nose 1.2813 in 5FL CBN",Ball Nose,CBN,1.2813,6.0,5,45,161.75,JP,https://images.example.com/tools/rj-0199.jpg,0.105
+RJ-0200,"Corner Radius 0.0625 in 2FL Carbide",Corner Radius,Carbide,0.0625,1.5,2,30,162.50,US,https://images.example.com/tools/rj-0200.jpg,0.010
