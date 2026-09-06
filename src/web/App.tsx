@@ -1,5 +1,8 @@
 /**
  * Root app component — Polaris-wrapped with state-machine routing.
+ *
+ * Flow: Welcome → Upload → Mapping → Preview → Results
+ * Back:                   Upload ← Mapping ← Preview ← Results
  */
 
 import React, { useState, useCallback } from "react";
@@ -16,12 +19,11 @@ type Route =
   | { page: "welcome" }
   | { page: "upload" }
   | { page: "mapping"; uploadId: string; catalogId: string }
-  | { page: "preview"; catalogId: string }
-  | { page: "results"; operationId: string }
+  | { page: "preview"; uploadId: string; catalogId: string }
+  | { page: "results"; operationId: string; uploadId?: string; catalogId?: string }
   | { page: "history" };
 
 export function App() {
-  // Start on welcome for first visit; could check localStorage for returning users
   const [route, setRoute] = useState<Route>(() => {
     const visited = typeof localStorage !== "undefined" && localStorage.getItem("sk_visited");
     return visited ? { page: "upload" } : { page: "welcome" };
@@ -41,12 +43,12 @@ export function App() {
     [],
   );
 
-  const navigateToPreview = useCallback((catalogId: string) => {
-    setRoute({ page: "preview", catalogId });
+  const navigateToPreview = useCallback((catalogId: string, uploadId?: string) => {
+    setRoute({ page: "preview", catalogId, uploadId: uploadId ?? "" });
   }, []);
 
-  const navigateToResults = useCallback((operationId: string) => {
-    setRoute({ page: "results", operationId });
+  const navigateToResults = useCallback((operationId: string, uploadId?: string, catalogId?: string) => {
+    setRoute({ page: "results", operationId, uploadId, catalogId });
   }, []);
 
   const navigateToHistory = useCallback(() => {
@@ -99,7 +101,7 @@ export function App() {
       content = (
         <MappingPage
           catalogId={route.catalogId}
-          onComplete={navigateToPreview}
+          onComplete={(catalogId) => navigateToPreview(catalogId, route.uploadId)}
           onBack={navigateToUpload}
         />
       );
@@ -108,8 +110,10 @@ export function App() {
       content = (
         <PreviewPage
           catalogId={route.catalogId}
-          onBack={navigateToUpload}
-          onExecute={navigateToResults}
+          onBack={() => navigateToMapping(route.uploadId, route.catalogId)}
+          onExecute={(operationId) =>
+            navigateToResults(operationId, route.uploadId, route.catalogId)
+          }
         />
       );
       break;
@@ -117,7 +121,11 @@ export function App() {
       content = (
         <ResultsPage
           operationId={route.operationId}
-          onBack={navigateToUpload}
+          onBack={
+            route.catalogId
+              ? () => navigateToPreview(route.catalogId!, route.uploadId)
+              : navigateToHistory
+          }
         />
       );
       break;
@@ -125,8 +133,8 @@ export function App() {
       content = (
         <HistoryPage
           onUpload={navigateToUpload}
-          onViewResults={navigateToResults}
-          onViewCatalog={navigateToPreview}
+          onViewResults={(operationId) => navigateToResults(operationId)}
+          onViewCatalog={(catalogId) => navigateToPreview(catalogId)}
         />
       );
       break;
