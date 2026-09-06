@@ -118,10 +118,17 @@ async function processNextUpload(): Promise<void> {
       });
     }
 
-    // Persist catalog products
+    // Persist catalog products (deduplicate by sourceKey — keep first occurrence)
     if (catalog.products.length > 0) {
+      const seen = new Set<string>();
+      const uniqueProducts = catalog.products.filter((p) => {
+        if (seen.has(p.sourceKey)) return false;
+        seen.add(p.sourceKey);
+        return true;
+      });
+
       await prisma.catalogProduct.createMany({
-        data: catalog.products.map((p) => {
+        data: uniqueProducts.map((p) => {
           const hasBlocking = catalog.issues.some(
             (i) => i.severity === "blocking" && i.sourceKey === p.sourceKey,
           );

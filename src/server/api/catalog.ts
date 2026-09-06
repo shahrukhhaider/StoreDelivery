@@ -194,8 +194,15 @@ router.put("/:id/mappings", async (req, res, next) => {
 
     // Persist new products
     if (result.catalog.products.length > 0) {
+      const seen = new Set<string>();
+      const uniqueProducts = result.catalog.products.filter((p) => {
+        if (seen.has(p.sourceKey)) return false;
+        seen.add(p.sourceKey);
+        return true;
+      });
+
       await prisma.catalogProduct.createMany({
-        data: result.catalog.products.map((p) => {
+        data: uniqueProducts.map((p) => {
           const hasBlocking = result.catalog.issues.some(
             (i) => i.severity === "blocking" && i.sourceKey === p.sourceKey,
           );
