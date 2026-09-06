@@ -1,8 +1,28 @@
 /**
  * API client — fetch wrapper with error handling for the server API.
+ *
+ * When running inside Shopify (App Bridge), fetches the session token
+ * and sends it as a Bearer header. Falls back to dev-mode X-Shop-Id.
  */
 
 const API_BASE = "/api";
+
+/**
+ * Get the Shopify App Bridge session token if available.
+ * App Bridge exposes this via `shopify.idToken()` on the global object.
+ */
+async function getSessionToken(): Promise<string | null> {
+  try {
+    // @ts-expect-error — shopify is injected by App Bridge in embedded mode
+    if (typeof shopify !== "undefined" && shopify.idToken) {
+      // @ts-expect-error
+      return await shopify.idToken();
+    }
+  } catch {
+    // Not in embedded mode
+  }
+  return null;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -20,13 +40,22 @@ async function request<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
+  const token = await getSessionToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((options.headers as Record<string, string>) ?? {}),
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    headers["X-Shop-Id"] = "dev_shop";
+  }
+
   const res = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shop-Id": "dev_shop",
-      ...options.headers,
-    },
     ...options,
+    headers,
   });
 
   if (!res.ok) {
@@ -58,9 +87,17 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
   const form = new FormData();
   form.append("file", file);
 
+  const headers: Record<string, string> = {};
+  const token = await getSessionToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    headers["X-Shop-Id"] = "dev_shop";
+  }
+
   const res = await fetch(`${API_BASE}/uploads`, {
     method: "POST",
-    headers: { "X-Shop-Id": "dev_shop" },
+    headers,
     body: form,
   });
 

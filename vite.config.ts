@@ -10,6 +10,7 @@ export default defineConfig({
     emptyOutDir: true,
   },
   resolve: {
+    extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
     alias: {
       "@server": path.resolve(__dirname, "src/server"),
       "@engine": path.resolve(__dirname, "src/engine"),

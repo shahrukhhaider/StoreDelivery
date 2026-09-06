@@ -19,26 +19,32 @@ export function requestLogger(req: Request, _res: Response, next: NextFunction):
 }
 
 /**
- * Extract shop ID from request header or query.
- * Ensures the shop record exists in DB (creates if needed for dev mode).
+ * Extract shop ID from session or header, resolve to DB id.
+ * Uses shopDomain set by shopifySession middleware if available.
+ * Falls back to X-Shop-Id header for dev mode.
  */
 export function shopScope(req: Request, _res: Response, next: NextFunction): void {
-  const rawShopId =
+  // Prefer shopDomain set by shopifySession middleware (from JWT)
+  const sessionDomain = (req as Request & { shopDomain?: string }).shopDomain;
+
+  const shopDomain =
+    sessionDomain ||
     (req.headers["x-shop-id"] as string) ||
     (req.query.shopId as string) ||
-    "dev_shop";
+    "dev.myshopify.com";
 
-  // Map the raw identifier to a shop domain for DB lookup
-  const shopDomain = rawShopId.includes(".myshopify.com")
-    ? rawShopId
-    : rawShopId === "dev_shop"
+  // Normalize to .myshopify.com domain
+  const normalizedDomain = shopDomain.includes(".myshopify.com")
+    ? shopDomain
+    : shopDomain === "dev_shop"
       ? "dev.myshopify.com"
-      : `${rawShopId}.myshopify.com`;
+      : `${shopDomain}.myshopify.com`;
 
   // Ensure shop exists and resolve to the real DB id
-  ensureShopExists(shopDomain)
+  ensureShopExists(normalizedDomain)
     .then((dbId) => {
-      (req as Request & { shopId: string }).shopId = dbId;
+      (req as Request & { shopId: string; shopDomain: string }).shopId = dbId;
+      (req as Request & { shopId: string; shopDomain: string }).shopDomain = normalizedDomain;
       next();
     })
     .catch(next);
