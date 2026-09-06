@@ -26,7 +26,7 @@ type Route =
 export function App() {
   const [route, setRoute] = useState<Route>(() => {
     const visited = typeof localStorage !== "undefined" && localStorage.getItem("sk_visited");
-    return visited ? { page: "upload" } : { page: "welcome" };
+    return visited ? { page: "history" } : { page: "welcome" };
   });
 
   const navigateToUpload = useCallback(() => {
@@ -61,18 +61,6 @@ export function App() {
       secondaryMenu={
         <div style={{ display: "flex", gap: "12px", padding: "0 16px" }}>
           <button
-            onClick={navigateToUpload}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--p-color-text)",
-              cursor: "pointer",
-              fontSize: "14px",
-            }}
-          >
-            Upload
-          </button>
-          <button
             onClick={navigateToHistory}
             style={{
               background: "none",
@@ -80,9 +68,23 @@ export function App() {
               color: "var(--p-color-text)",
               cursor: "pointer",
               fontSize: "14px",
+              fontWeight: route.page === "history" ? "600" : "400",
             }}
           >
-            History
+            Dashboard
+          </button>
+          <button
+            onClick={navigateToUpload}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--p-color-text)",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: route.page === "upload" ? "600" : "400",
+            }}
+          >
+            New Import
           </button>
         </div>
       }
@@ -121,11 +123,7 @@ export function App() {
       content = (
         <ResultsPage
           operationId={route.operationId}
-          onBack={
-            route.catalogId
-              ? () => navigateToPreview(route.catalogId!, route.uploadId)
-              : navigateToHistory
-          }
+          onBack={navigateToHistory}
         />
       );
       break;

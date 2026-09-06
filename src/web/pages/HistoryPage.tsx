@@ -253,6 +253,7 @@ export function HistoryPage({ onUpload, onViewResults, onViewCatalog }: Props) {
   return (
     <Page
       title="Import History"
+      subtitle="Track all your catalog imports and their progress"
       primaryAction={{ content: "New Import", onAction: onUpload }}
     >
       <Card padding="0">
