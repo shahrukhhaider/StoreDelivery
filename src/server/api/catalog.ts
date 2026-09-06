@@ -344,34 +344,47 @@ router.get("/:id/issues", async (req, res, next) => {
       return;
     }
 
-    // Re-derive issues from stored products by re-running validation
-    // For now, collect from product status counts
+    // Re-validate products to get actual issue details
     const products = await prisma.catalogProduct.findMany({
       where: { catalogId: catalog.id },
       select: { sourceKey: true, status: true, normalizedJson: true },
     });
 
-    // Extract issues stored in the catalog products' normalized JSON
-    // The full catalog issues were computed during processing
-    // For API purposes, aggregate from product statuses
+    const { validateCatalog } = await import("../../engine/validation/index.js");
+    const catalogProducts = products.map(
+      (p: { normalizedJson: unknown }) => p.normalizedJson as unknown as import("../../shared/types/catalog.js").CatalogProduct,
+    );
+    const validationResult = validateCatalog(catalogProducts);
+
+    // Group issues by severity with full details
+    const blockingIssues = validationResult.issues
+      .filter((i) => i.severity === "blocking")
+      .map((i) => ({
+        sourceKey: i.sourceKey ?? null,
+        code: i.code,
+        message: i.message,
+        field: i.field ?? null,
+      }));
+
+    const warningIssues = validationResult.issues
+      .filter((i) => i.severity === "warning")
+      .map((i) => ({
+        sourceKey: i.sourceKey ?? null,
+        code: i.code,
+        message: i.message,
+        field: i.field ?? null,
+      }));
+
     const issues = {
-      blocking: products
-        .filter((p) => p.status === "blocked")
-        .map((p) => ({
-          sourceKey: p.sourceKey,
-          title: (p.normalizedJson as Record<string, unknown>).title ?? "Unknown",
-        })),
-      warning: products
-        .filter((p) => p.status === "needs_review")
-        .map((p) => ({
-          sourceKey: p.sourceKey,
-          title: (p.normalizedJson as Record<string, unknown>).title ?? "Unknown",
-        })),
+      blocking: blockingIssues,
+      warning: warningIssues,
       summary: {
         total: products.length,
         ready: products.filter((p) => p.status === "ready").length,
         needsReview: products.filter((p) => p.status === "needs_review").length,
         blocked: products.filter((p) => p.status === "blocked").length,
+        blockingCount: blockingIssues.length,
+        warningCount: warningIssues.length,
       },
     };
 

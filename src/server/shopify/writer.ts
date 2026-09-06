@@ -36,23 +36,27 @@ const locationCache = new Map<string, string>();
 export async function getPrimaryLocationId(
   client: ShopifyGraphQLClient,
   shopDomain: string,
-): Promise<string> {
+): Promise<string | null> {
   const cached = locationCache.get(shopDomain);
   if (cached) return cached;
 
-  const res = await client.query<{
-    locations: {
-      edges: Array<{ node: { id: string; name: string; isActive: boolean } }>;
-    };
-  }>(PRIMARY_LOCATION_QUERY, {}, "PrimaryLocation");
+  try {
+    const res = await client.query<{
+      locations: {
+        edges: Array<{ node: { id: string; name: string; isActive: boolean } }>;
+      };
+    }>(PRIMARY_LOCATION_QUERY, {}, "PrimaryLocation");
 
-  const locationId = res.data?.locations?.edges?.[0]?.node?.id;
-  if (!locationId) {
-    throw new Error("No locations found for shop — cannot set inventory");
+    const locationId = res.data?.locations?.edges?.[0]?.node?.id;
+    if (!locationId) {
+      return null; // No location — inventory quantities will be skipped
+    }
+
+    locationCache.set(shopDomain, locationId);
+    return locationId;
+  } catch {
+    return null; // Location query failed — skip inventory
   }
-
-  locationCache.set(shopDomain, locationId);
-  return locationId;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,8 +76,8 @@ export type WriteResult = {
 export type WriterOptions = {
   /** Max concurrent Shopify mutations (default: 4) */
   concurrency?: number;
-  /** Shop's primary location ID — required for inventory quantities */
-  locationId: string;
+  /** Shop's primary location ID — null means skip inventory quantities */
+  locationId: string | null;
   /** Shop domain — used for location cache key */
   shopDomain: string;
   /** Callback after each product write (for progress tracking) */
@@ -111,7 +115,7 @@ const PRODUCT_CREATE_MUTATION = `
 // Product input builder
 // ---------------------------------------------------------------------------
 
-function buildProductInput(product: CatalogProduct, locationId: string): {
+function buildProductInput(product: CatalogProduct, locationId: string | null): {
   input: Record<string, unknown>;
   media: Array<Record<string, unknown>>;
 } {
@@ -121,7 +125,7 @@ function buildProductInput(product: CatalogProduct, locationId: string): {
     if (v.barcode) variant.barcode = v.barcode;
     if (v.price) variant.price = v.price;
     if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
-    if (v.inventoryQuantity !== undefined) {
+    if (v.inventoryQuantity !== undefined && locationId) {
       variant.inventoryQuantities = {
         availableQuantity: v.inventoryQuantity,
         locationId,
@@ -192,7 +196,7 @@ export async function writeProducts(
   const active: Promise<void>[] = [];
 
   async function processOne(product: CatalogProduct): Promise<void> {
-    const result = await writeOneProduct(client, product, options.locationId, logger);
+    const result = await writeOneProduct(client, product, options.locationId ?? null, logger);
     results.push(result);
     if (options?.onItemComplete) {
       await options.onItemComplete(result);
@@ -221,7 +225,7 @@ export async function writeProducts(
 async function writeOneProduct(
   client: ShopifyGraphQLClient,
   product: CatalogProduct,
-  locationId: string,
+  locationId: string | null,
   logger: ReturnType<typeof getLogger>,
 ): Promise<WriteResult> {
   try {

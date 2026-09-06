@@ -218,10 +218,24 @@ export async function getProductDetail(catalogId: string, productId: string) {
 // Issues
 // ---------------------------------------------------------------------------
 
+export type IssueItem = {
+  sourceKey: string | null;
+  code: string;
+  message: string;
+  field: string | null;
+};
+
 export type IssuesResponse = {
-  blocking: Array<{ sourceKey: string; title: unknown }>;
-  warning: Array<{ sourceKey: string; title: unknown }>;
-  summary: { total: number; ready: number; needsReview: number; blocked: number };
+  blocking: IssueItem[];
+  warning: IssueItem[];
+  summary: {
+    total: number;
+    ready: number;
+    needsReview: number;
+    blocked: number;
+    blockingCount?: number;
+    warningCount?: number;
+  };
 };
 
 export async function getIssues(catalogId: string): Promise<IssuesResponse> {
@@ -310,4 +324,30 @@ export async function getImportItems(
 
 export async function retryImport(operationId: string): Promise<{ id: string; status: string }> {
   return request(`/imports/${operationId}/retry`, { method: "POST" });
+}
+
+// ---------------------------------------------------------------------------
+// History
+// ---------------------------------------------------------------------------
+
+export type HistoryEntry = {
+  uploadId: string;
+  fileName: string;
+  format: string;
+  uploadStatus: string;
+  createdAt: string;
+  catalogId: string | null;
+  productCount: number;
+  operationId: string | null;
+  importStatus: string | null;
+  plannedCount: number;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  completedAt: string | null;
+  startedAt: string | null;
+};
+
+export async function getHistory(): Promise<{ history: HistoryEntry[] }> {
+  return request("/history");
 }

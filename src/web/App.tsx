@@ -126,6 +126,7 @@ export function App() {
         <HistoryPage
           onUpload={navigateToUpload}
           onViewResults={navigateToResults}
+          onViewCatalog={navigateToPreview}
         />
       );
       break;

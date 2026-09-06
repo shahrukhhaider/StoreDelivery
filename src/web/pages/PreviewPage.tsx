@@ -197,11 +197,47 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
 
         {hasBlocking && (
           <Banner title="Blocking issues found" tone="critical">
-            <p>
-              {issues?.summary.blocked} product(s) have blocking issues that
-              must be resolved before importing. These products will be excluded
-              from the import.
-            </p>
+            <BlockStack gap="200">
+              <Text as="p" variant="bodyMd">
+                {issues?.summary.blocked} product(s) have blocking issues that
+                must be resolved before importing. These products will be excluded
+                from the import.
+              </Text>
+              {issues?.blocking && issues.blocking.length > 0 && (
+                <BlockStack gap="100">
+                  {issues.blocking.slice(0, 10).map((issue, i) => (
+                    <Text as="p" variant="bodySm" key={i}>
+                      • <strong>{issue.code}</strong>
+                      {issue.sourceKey ? ` [${issue.sourceKey}]` : ""}: {issue.message}
+                      {issue.field ? ` (field: ${issue.field})` : ""}
+                    </Text>
+                  ))}
+                  {issues.blocking.length > 10 && (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      …and {issues.blocking.length - 10} more blocking issues
+                    </Text>
+                  )}
+                </BlockStack>
+              )}
+            </BlockStack>
+          </Banner>
+        )}
+
+        {issues && issues.warning && issues.warning.length > 0 && (
+          <Banner title={`${issues.warning.length} warning(s)`} tone="warning">
+            <BlockStack gap="100">
+              {issues.warning.slice(0, 5).map((issue, i) => (
+                <Text as="p" variant="bodySm" key={i}>
+                  • <strong>{issue.code}</strong>
+                  {issue.sourceKey ? ` [${issue.sourceKey}]` : ""}: {issue.message}
+                </Text>
+              ))}
+              {issues.warning.length > 5 && (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  …and {issues.warning.length - 5} more warnings
+                </Text>
+              )}
+            </BlockStack>
           </Banner>
         )}
 
