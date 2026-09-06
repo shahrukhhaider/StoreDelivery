@@ -85,16 +85,16 @@ export type WriterOptions = {
 };
 
 // ---------------------------------------------------------------------------
-// GraphQL mutations
+// GraphQL mutations — using productSet (2024-10+ API)
 // ---------------------------------------------------------------------------
 
-const PRODUCT_CREATE_MUTATION = `
-  mutation ProductCreate($input: ProductInput!, $media: [CreateMediaInput!]) {
-    productCreate(input: $input, media: $media) {
+const PRODUCT_SET_MUTATION = `
+  mutation ProductSet($synchronous: Boolean!, $productSet: ProductSetInput!) {
+    productSet(synchronous: $synchronous, input: $productSet) {
       product {
         id
         title
-        variants(first: 10) {
+        variants(first: 100) {
           edges {
             node {
               id
@@ -106,31 +106,28 @@ const PRODUCT_CREATE_MUTATION = `
       userErrors {
         field
         message
+        code
       }
     }
   }
 `;
 
 // ---------------------------------------------------------------------------
-// Product input builder
+// Product input builder — productSet format
 // ---------------------------------------------------------------------------
 
-function buildProductInput(product: CatalogProduct, locationId: string | null): {
-  input: Record<string, unknown>;
-  media: Array<Record<string, unknown>>;
+function buildProductSetInput(product: CatalogProduct, locationId: string | null): {
+  productSet: Record<string, unknown>;
 } {
+  // Build variants in productSet format
   const variants = product.variants.map((v) => {
     const variant: Record<string, unknown> = {};
     if (v.sku) variant.sku = v.sku;
     if (v.barcode) variant.barcode = v.barcode;
-    if (v.price) variant.price = v.price;
-    if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
-    if (v.inventoryQuantity !== undefined && locationId) {
-      variant.inventoryQuantities = {
-        availableQuantity: v.inventoryQuantity,
-        locationId,
-      };
+    if (v.price) {
+      variant.price = v.price;
     }
+    if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
     if (v.weight !== undefined) {
       variant.weight = v.weight;
       variant.weightUnit = (v.weightUnit ?? "lb").toUpperCase() === "KG"
@@ -138,32 +135,30 @@ function buildProductInput(product: CatalogProduct, locationId: string | null): 
         : "POUNDS";
     }
 
-    // Options
-    const optionValues = Object.values(v.options).filter(Boolean);
-    if (optionValues.length > 0) {
-      variant.options = optionValues;
+    // Options as optionValues for productSet
+    const optionEntries = Object.entries(v.options).filter(([, val]) => Boolean(val));
+    if (optionEntries.length > 0) {
+      variant.optionValues = optionEntries.map(([name, value]) => ({
+        name,
+        value,
+      }));
     }
 
     return variant;
   });
 
-  const input: Record<string, unknown> = {
-    title: product.title,
+  const productSet: Record<string, unknown> = {
+    title: product.title || "Untitled Product",
+    productOptions: buildProductOptions(product),
     variants,
   };
 
-  if (product.description) input.descriptionHtml = product.description;
-  if (product.vendor) input.vendor = product.vendor;
-  if (product.productType) input.productType = product.productType;
-  if (product.tags.length > 0) input.tags = product.tags;
+  if (product.description) productSet.descriptionHtml = product.description;
+  if (product.vendor) productSet.vendor = product.vendor;
+  if (product.productType) productSet.productType = product.productType;
+  if (product.tags.length > 0) productSet.tags = product.tags;
 
-  // Build option names from the first variant's options keys
-  const optionKeys = Object.keys(product.variants[0]?.options ?? {});
-  if (optionKeys.length > 0) {
-    input.options = optionKeys;
-  }
-
-  // Media (images) — Shopify accepts external URLs via CreateMediaInput
+  // Media (images)
   const media = product.images
     .filter((img) => img.sourceUrl.startsWith("http"))
     .map((img) => ({
@@ -171,8 +166,34 @@ function buildProductInput(product: CatalogProduct, locationId: string | null): 
       alt: img.altText ?? "",
       mediaContentType: "IMAGE",
     }));
+  if (media.length > 0) {
+    productSet.media = media;
+  }
 
-  return { input, media };
+  return { productSet };
+}
+
+/**
+ * Build productOptions array from variant option keys.
+ * productSet requires options to be declared with their values.
+ */
+function buildProductOptions(product: CatalogProduct): Array<{ name: string; values: Array<{ name: string }> }> {
+  const optionMap = new Map<string, Set<string>>();
+
+  for (const variant of product.variants) {
+    for (const [key, value] of Object.entries(variant.options)) {
+      if (!value) continue;
+      if (!optionMap.has(key)) optionMap.set(key, new Set());
+      optionMap.get(key)!.add(value);
+    }
+  }
+
+  if (optionMap.size === 0) return [];
+
+  return Array.from(optionMap.entries()).map(([name, values]) => ({
+    name,
+    values: Array.from(values).map((v) => ({ name: v })),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -229,24 +250,25 @@ async function writeOneProduct(
   logger: ReturnType<typeof getLogger>,
 ): Promise<WriteResult> {
   try {
-    const { input, media } = buildProductInput(product, locationId);
+    const { productSet } = buildProductSetInput(product, locationId);
+    const imageCount = product.images.filter((img) => img.sourceUrl.startsWith("http")).length;
 
     const res = await client.query<{
-      productCreate: {
+      productSet: {
         product: { id: string; title: string } | null;
-        userErrors: Array<{ field: string[]; message: string }>;
+        userErrors: Array<{ field: string[]; message: string; code: string }>;
       };
     }>(
-      PRODUCT_CREATE_MUTATION,
-      { input, media: media.length > 0 ? media : undefined },
-      "ProductCreate",
+      PRODUCT_SET_MUTATION,
+      { synchronous: true, productSet },
+      "ProductSet",
     );
 
     // Check for user errors (validation failures — not retryable)
-    const userErrors = res.data?.productCreate?.userErrors ?? [];
+    const userErrors = res.data?.productSet?.userErrors ?? [];
     if (userErrors.length > 0) {
       const errorMsg = userErrors.map((e) => e.message).join("; ");
-      logger.warn("Product creation validation error", {
+      logger.warn("Product set validation error", {
         sourceKey: product.sourceKey,
         errors: userErrors,
       });
@@ -273,13 +295,13 @@ async function writeOneProduct(
       };
     }
 
-    const createdProduct = res.data?.productCreate?.product;
+    const createdProduct = res.data?.productSet?.product;
     if (!createdProduct) {
       return {
         sourceKey: product.sourceKey,
         success: false,
         errorCode: "NO_PRODUCT_RETURNED",
-        errorMessage: "Product creation returned no product",
+        errorMessage: "productSet returned no product",
         imagesAttached: 0,
         imagesFailed: product.images.length,
       };
@@ -290,14 +312,12 @@ async function writeOneProduct(
       shopifyProductId: createdProduct.id,
     });
 
-    // Image count: media was submitted inline with productCreate
-    // Shopify processes images asynchronously — we report based on submission
     return {
       sourceKey: product.sourceKey,
       success: true,
       shopifyProductId: createdProduct.id,
-      imagesAttached: media.length,
-      imagesFailed: product.images.length - media.length, // non-http URLs
+      imagesAttached: imageCount,
+      imagesFailed: product.images.length - imageCount,
     };
   } catch (err) {
     logger.error("Product write failed", {
