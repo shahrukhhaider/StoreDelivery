@@ -192,7 +192,7 @@ export const HEADER_ALIASES: Record<string, TargetField> = {
   "grouping": "grouping.parentKey",
 
   // --- Shopify-native CSV column names ---
-  "handle": "ignore",
+  "handle": "grouping.parentKey",
   "variant sku": "variant.sku",
   "variant price": "variant.price",
   "variant compare at price": "variant.compareAtPrice",

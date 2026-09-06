@@ -295,6 +295,29 @@ function buildProduct(
   const getField = (target: string): string =>
     firstRow[fieldToColumn.get(target) ?? ""]?.trim() ?? "";
 
+  // For title: find the first row in the group that has a non-empty title
+  // (Shopify CSVs put the title on the first row only, variant rows are blank)
+  const titleCol = fieldToColumn.get("product.title") ?? "";
+  let title = "";
+  for (const idx of rowIndices) {
+    const rowTitle = sheet.rows[idx][titleCol]?.trim() ?? "";
+    if (rowTitle) {
+      title = normalizeText(rowTitle);
+      break;
+    }
+  }
+
+  // Same for description, vendor, etc. — take from first row that has a value
+  const findFirstNonEmpty = (target: string): string => {
+    const col = fieldToColumn.get(target) ?? "";
+    if (!col) return "";
+    for (const idx of rowIndices) {
+      const val = sheet.rows[idx][col]?.trim() ?? "";
+      if (val) return normalizeText(val);
+    }
+    return "";
+  };
+
   // Build variants from all rows in the group
   const variants: CatalogVariant[] = rowIndices.map((idx) => {
     const row = sheet.rows[idx];
@@ -352,14 +375,16 @@ function buildProduct(
     }
   }
 
-  const rawTags = getField("product.tags");
+  const rawTags =
+    findFirstNonEmpty("product.tags") ||
+    (firstRow[fieldToColumn.get("product.tags") ?? ""]?.trim() ?? "");
 
   return {
     sourceKey,
-    title: normalizeText(getField("product.title")),
-    description: normalizeText(getField("product.description")) || undefined,
-    vendor: normalizeText(getField("product.vendor")) || undefined,
-    productType: normalizeText(getField("product.productType")) || undefined,
+    title,
+    description: findFirstNonEmpty("product.description") || undefined,
+    vendor: findFirstNonEmpty("product.vendor") || undefined,
+    productType: findFirstNonEmpty("product.productType") || undefined,
     tags: normalizeTags(rawTags),
     variants,
     images,

@@ -83,8 +83,8 @@ describe("lookupAlias", () => {
   // --- Shopify-native CSV columns ---
 
   describe("Shopify-native columns", () => {
-    it("maps Handle to ignore", () => {
-      expect(lookupAlias("Handle")).toEqual({ target: "ignore" });
+    it("maps Handle to grouping key", () => {
+      expect(lookupAlias("Handle")).toEqual({ target: "grouping.parentKey" });
     });
 
     it("maps Body (HTML)", () => {
