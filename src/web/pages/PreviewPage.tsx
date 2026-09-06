@@ -103,6 +103,8 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
   }
 
   const hasBlocking = (issues?.summary.blocked ?? 0) > 0;
+  const readyCount = (issues?.summary.ready ?? 0) + (issues?.summary.needsReview ?? 0);
+  const allBlocked = readyCount === 0 && hasBlocking;
 
   function statusBadge(status: string) {
     switch (status) {
@@ -139,10 +141,12 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
       subtitle={catalog?.fileName}
       backAction={{ onAction: onBack }}
       primaryAction={{
-        content: "Create Import Plan",
+        content: allBlocked
+          ? "No products to import"
+          : `Import ${readyCount} product${readyCount !== 1 ? "s" : ""}`,
         onAction: handleCreatePlan,
         loading: planLoading,
-        disabled: hasBlocking,
+        disabled: allBlocked,
       }}
     >
       <BlockStack gap="400">
@@ -196,12 +200,11 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
         </Card>
 
         {hasBlocking && (
-          <Banner title="Blocking issues found" tone="critical">
+          <Banner title={`${issues?.summary.blocked} product(s) will be skipped`} tone="critical">
             <BlockStack gap="200">
               <Text as="p" variant="bodyMd">
-                {issues?.summary.blocked} product(s) have blocking issues that
-                must be resolved before importing. These products will be excluded
-                from the import.
+                These products have issues that prevent import. The remaining
+                {readyCount > 0 ? ` ${readyCount}` : ""} valid product(s) can still be imported.
               </Text>
               {issues?.blocking && issues.blocking.length > 0 && (
                 <BlockStack gap="100">
