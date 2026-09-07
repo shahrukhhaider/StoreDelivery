@@ -370,16 +370,19 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
     const productIssues = issues.filter((i) => i.sourceKey === p.sourceKey);
 
     return (
-      <IndexTable.Row id={p.id} key={p.id} position={index}>
+      <IndexTable.Row
+        id={p.id}
+        key={p.id}
+        position={index}
+        onClick={() => {
+          if (productIssues.length > 0) handleIssueClick(productIssues);
+        }}
+      >
         <IndexTable.Cell>
           {productIssues.length > 0 ? (
-            <Button
-              size="slim"
-              tone={productIssues.some((i) => i.severity === "blocking") ? "critical" : undefined}
-              onClick={() => handleIssueClick(productIssues)}
-            >
-              Review
-            </Button>
+            productIssues.some((i) => i.severity === "blocking")
+              ? <Badge tone="critical">Blocked</Badge>
+              : <Badge tone="warning">Review</Badge>
           ) : (
             statusBadge(p.status, p.hasOverrides)
           )}
