@@ -132,7 +132,7 @@ function buildProductSetInput(product: CatalogProduct, locationId: string | null
   }
 
   // Build variants in productSet format
-  const variants = product.variants.map((v) => {
+  const variants = product.variants.map((v, variantIndex) => {
     const variant: Record<string, unknown> = {};
     if (v.sku) variant.sku = v.sku;
     if (v.barcode) variant.barcode = v.barcode;
@@ -148,10 +148,16 @@ function buildProductSetInput(product: CatalogProduct, locationId: string | null
       if (val) {
         return { optionName: optName, name: val };
       }
-      // Fallback: use "Default Title" for "Title" option, or "Default" for others
+      // Fallback: unique default per variant to avoid "variant already exists"
+      if (optName === "Title") {
+        return {
+          optionName: optName,
+          name: product.variants.length > 1 ? `Variant ${variantIndex + 1}` : "Default Title",
+        };
+      }
       return {
         optionName: optName,
-        name: optName === "Title" ? "Default Title" : "Default",
+        name: product.variants.length > 1 ? `Option ${variantIndex + 1}` : "Default",
       };
     });
 
@@ -204,12 +210,22 @@ function buildProductOptions(product: CatalogProduct): Array<{ name: string; val
 
   return Array.from(optionMap.entries()).map(([name, values]) => {
     const valueList = Array.from(values).map((v) => ({ name: v }));
-    // Add "Default" if some variants don't have this option
+    // Add default values for variants that don't have this option
     const hasVariantWithout = product.variants.some(
       (v) => !v.options[name],
     );
     if (hasVariantWithout) {
-      valueList.push({ name: name === "Title" ? "Default Title" : "Default" });
+      // Add unique defaults for each variant without this option
+      product.variants.forEach((v, idx) => {
+        if (!v.options[name]) {
+          const defaultVal = name === "Title"
+            ? (product.variants.length > 1 ? `Variant ${idx + 1}` : "Default Title")
+            : (product.variants.length > 1 ? `Option ${idx + 1}` : "Default");
+          if (!valueList.some((vl) => vl.name === defaultVal)) {
+            valueList.push({ name: defaultVal });
+          }
+        }
+      });
     }
     return { name, values: valueList };
   });
