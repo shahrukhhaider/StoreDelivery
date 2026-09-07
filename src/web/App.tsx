@@ -1,12 +1,13 @@
 /**
  * Root app component — Polaris-wrapped with state-machine routing.
  *
- * Flow: Welcome → Upload → Mapping → Preview → Results
- * Back:                   Upload ← Mapping ← Preview ← Results
+ * Nav: Home (upload/intro) | Import History
+ * Flow: Home → Upload → Mapping → Preview → Results
  */
 
 import React, { useState, useCallback } from "react";
-import { AppProvider, Frame, TopBar } from "@shopify/polaris";
+import { AppProvider, Frame, Navigation } from "@shopify/polaris";
+import { HomeIcon, ClockIcon } from "@shopify/polaris-icons";
 import enTranslations from "@shopify/polaris/locales/en.json";
 import { WelcomePage } from "./pages/WelcomePage.js";
 import { UploadPage } from "./pages/UploadPage.js";
@@ -16,7 +17,7 @@ import { ResultsPage } from "./pages/ResultsPage.js";
 import { HistoryPage } from "./pages/HistoryPage.js";
 
 type Route =
-  | { page: "welcome" }
+  | { page: "home" }
   | { page: "upload" }
   | { page: "mapping"; uploadId: string; catalogId: string }
   | { page: "preview"; uploadId: string; catalogId: string }
@@ -24,15 +25,13 @@ type Route =
   | { page: "history" };
 
 export function App() {
-  const [route, setRoute] = useState<Route>(() => {
-    const visited = typeof localStorage !== "undefined" && localStorage.getItem("sk_visited");
-    return visited ? { page: "history" } : { page: "welcome" };
-  });
+  const [route, setRoute] = useState<Route>({ page: "home" });
+
+  const navigateToHome = useCallback(() => {
+    setRoute({ page: "home" });
+  }, []);
 
   const navigateToUpload = useCallback(() => {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("sk_visited", "1");
-    }
     setRoute({ page: "upload" });
   }, []);
 
@@ -55,45 +54,30 @@ export function App() {
     setRoute({ page: "history" });
   }, []);
 
-  const topBar = (
-    <TopBar
-      showNavigationToggle={false}
-      secondaryMenu={
-        <div style={{ display: "flex", gap: "12px", padding: "0 16px" }}>
-          <button
-            onClick={navigateToHistory}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--p-color-text)",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: route.page === "history" ? "600" : "400",
-            }}
-          >
-            Dashboard
-          </button>
-          <button
-            onClick={navigateToUpload}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--p-color-text)",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: route.page === "upload" ? "600" : "400",
-            }}
-          >
-            New Import
-          </button>
-        </div>
-      }
-    />
+  const navigation = (
+    <Navigation location={route.page}>
+      <Navigation.Section
+        items={[
+          {
+            label: "Home",
+            icon: HomeIcon,
+            onClick: navigateToHome,
+            selected: route.page === "home" || route.page === "upload",
+          },
+          {
+            label: "Import History",
+            icon: ClockIcon,
+            onClick: navigateToHistory,
+            selected: route.page === "history" || route.page === "results",
+          },
+        ]}
+      />
+    </Navigation>
   );
 
   let content: React.ReactNode;
   switch (route.page) {
-    case "welcome":
+    case "home":
       content = <WelcomePage onStart={navigateToUpload} />;
       break;
     case "upload":
@@ -140,7 +124,7 @@ export function App() {
 
   return (
     <AppProvider i18n={enTranslations}>
-      <Frame topBar={topBar}>
+      <Frame navigation={navigation}>
         {content}
       </Frame>
     </AppProvider>
