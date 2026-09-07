@@ -50,6 +50,7 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [skuModalOpen, setSkuModalOpen] = useState(false);
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
 
   const loadData = useCallback(
     async (p: number) => {
@@ -121,21 +122,105 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
     }
   }
 
-  const rowMarkup = products.map((p, index) => (
-    <IndexTable.Row id={p.id} key={p.id} position={index}>
-      <IndexTable.Cell>
-        <Text as="span" fontWeight="semibold">
-          {p.title || "(no title)"}
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>{p.vendor ?? "—"}</IndexTable.Cell>
-      <IndexTable.Cell>{p.firstSku ?? "—"}</IndexTable.Cell>
-      <IndexTable.Cell>{p.firstPrice ? `$${p.firstPrice}` : "—"}</IndexTable.Cell>
-      <IndexTable.Cell>{p.variantCount}</IndexTable.Cell>
-      <IndexTable.Cell>{p.imageCount}</IndexTable.Cell>
-      <IndexTable.Cell>{statusBadge(p.status)}</IndexTable.Cell>
-    </IndexTable.Row>
-  ));
+  const rowMarkup: React.ReactNode[] = [];
+  let position = 0;
+
+  for (const p of products) {
+    const isExpanded = expandedProducts.has(p.id);
+    const variantCount = p.variantCount;
+    const variants = p.variants ?? [];
+
+    rowMarkup.push(
+      <IndexTable.Row id={p.id} key={p.id} position={position++}>
+        <IndexTable.Cell>
+          <Text as="span" fontWeight="semibold">
+            {p.title || "(no title)"}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>{p.vendor ?? "—"}</IndexTable.Cell>
+        <IndexTable.Cell>{p.firstSku ?? "—"}</IndexTable.Cell>
+        <IndexTable.Cell>{p.firstPrice ? `$${p.firstPrice}` : "—"}</IndexTable.Cell>
+        <IndexTable.Cell>
+          {variantCount > 1 ? (
+            <span
+              role="button"
+              tabIndex={0}
+              style={{ cursor: "pointer" }}
+              onClick={() => {
+                setExpandedProducts((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(p.id)) next.delete(p.id);
+                  else next.add(p.id);
+                  return next;
+                });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  setExpandedProducts((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(p.id)) next.delete(p.id);
+                    else next.add(p.id);
+                    return next;
+                  });
+                }
+              }}
+            >
+              <Text as="span" variant="bodySm">
+                {isExpanded ? "▾" : "▸"} {String(variantCount)} variants
+              </Text>
+            </span>
+          ) : (
+            <Text as="span" variant="bodySm">{variantCount}</Text>
+          )}
+        </IndexTable.Cell>
+        <IndexTable.Cell>{p.imageCount}</IndexTable.Cell>
+        <IndexTable.Cell>{statusBadge(p.status)}</IndexTable.Cell>
+      </IndexTable.Row>,
+    );
+
+    if (isExpanded && variants.length > 1) {
+      for (let vi = 0; vi < variants.length; vi++) {
+        const v = variants[vi];
+        const optionStr = Object.entries(v.options ?? {})
+          .map(([k, val]) => `${k}: ${val}`)
+          .join(", ") || "—";
+
+        rowMarkup.push(
+          <IndexTable.Row
+            id={`${p.id}-v${vi}`}
+            key={`${p.id}-v${vi}`}
+            position={position++}
+          >
+            <IndexTable.Cell>
+              <span style={{ paddingLeft: "20px", color: "var(--p-color-text-subdued)" }}>↳</span>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">{optionStr}</Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">{v.sku ?? "—"}</Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">{v.price ? `$${v.price}` : "—"}</Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">{v.barcode ?? "—"}</Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {v.inventoryQuantity != null ? String(v.inventoryQuantity) : "—"}
+              </Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {v.weight != null ? `${v.weight} ${v.weightUnit ?? ""}`.trim() : "—"}
+              </Text>
+            </IndexTable.Cell>
+          </IndexTable.Row>,
+        );
+      }
+    }
+  }
 
   return (
     <Page

@@ -18,6 +18,7 @@ import {
   normalizeWeight,
   normalizeTags,
   normalizeText,
+  normalizeIdentifier,
 } from "../normalizer/normalizer.js";
 
 export type GroupingResult = {
@@ -364,11 +365,18 @@ function buildProduct(
 
     const weightResult = normalizeWeight(getRowField("variant.weight"));
 
+    // Build a stable variant sourceKey from product key + options or index.
+    // Never use raw SKU as the sole sourceKey — SKU may have artifacts,
+    // be missing, or change between imports.
+    const optionSuffix = Object.values(options).filter(Boolean).join("-");
+    const variantSourceKey = optionSuffix
+      ? `${sourceKey}_${optionSuffix}`
+      : `${sourceKey}_v${idx}`;
+
     return {
-      sourceKey:
-        getRowField("variant.sku") || `${sourceKey}_v${idx}`,
-      sku: getRowField("variant.sku") || undefined,
-      barcode: getRowField("variant.barcode") || undefined,
+      sourceKey: variantSourceKey,
+      sku: normalizeIdentifier(getRowField("variant.sku")) || undefined,
+      barcode: normalizeIdentifier(getRowField("variant.barcode")) || undefined,
       options,
       price: normalizePrice(getRowField("variant.price")) ?? undefined,
       compareAtPrice:

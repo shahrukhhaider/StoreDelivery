@@ -172,14 +172,76 @@ export function normalizeTags(raw: string): string[] {
 }
 
 /**
- * Clean general text: trim, collapse whitespace, strip control chars.
+ * Strip common spreadsheet encoding artifacts from any raw cell value.
+ * This is the shared base for all normalizers.
+ */
+function cleanSpreadsheetArtifacts(raw: string): string {
+  if (!raw) return "";
+  let cleaned = raw;
+  // Strip BOM (byte-order mark — common in UTF-8 CSVs from Excel)
+  cleaned = cleaned.replace(/^\uFEFF/, "");
+  // Strip zero-width characters (invisible but break string comparison)
+  cleaned = cleaned.replace(/[\u200B\u200C\u200D\u2060\uFEFF]/g, "");
+  // Strip control characters (except tab \x09 and newline \x0A \x0D)
+  // eslint-disable-next-line no-control-regex
+  cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  // Replace Unicode replacement character (encoding errors → empty)
+  cleaned = cleaned.replace(/\uFFFD/g, "");
+  // Normalize non-breaking spaces to regular spaces
+  cleaned = cleaned.replace(/\u00A0/g, " ");
+  // Normalize smart/curly quotes to straight quotes
+  cleaned = cleaned.replace(/[\u2018\u2019\u201A\u201B]/g, "'");
+  cleaned = cleaned.replace(/[\u201C\u201D\u201E\u201F]/g, '"');
+  // Normalize en-dash and em-dash to hyphen
+  cleaned = cleaned.replace(/[\u2013\u2014]/g, "-");
+  // Strip literal "null", "NULL", "N/A", "#N/A", "#REF!", "#VALUE!" (spreadsheet error values)
+  const lower = cleaned.trim().toLowerCase();
+  if (
+    lower === "null" ||
+    lower === "nil" ||
+    lower === "#n/a" ||
+    lower === "#ref!" ||
+    lower === "#value!" ||
+    lower === "#name?" ||
+    lower === "#div/0!" ||
+    lower === "#null!"
+  ) {
+    return "";
+  }
+  return cleaned;
+}
+
+/**
+ * Clean general text: trim, collapse whitespace, strip spreadsheet artifacts.
  */
 export function normalizeText(raw: string): string {
   if (!raw) return "";
-  // Strip control characters (except newline/tab which we'll collapse)
-  // eslint-disable-next-line no-control-regex
-  let cleaned = raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  let cleaned = cleanSpreadsheetArtifacts(raw);
   // Collapse whitespace
   cleaned = cleaned.trim().replace(/\s+/g, " ");
   return cleaned;
+}
+
+/**
+ * Normalize an identifier field (SKU, barcode, MPN).
+ * Applies spreadsheet artifact cleanup plus identifier-specific rules:
+ * - Leading apostrophe (Excel text-force prefix)
+ * - Leading equals sign (formula artifact)
+ * - Surrounding quotes
+ */
+export function normalizeIdentifier(raw: string): string {
+  if (!raw) return "";
+  let cleaned = cleanSpreadsheetArtifacts(raw);
+  // Trim whitespace
+  cleaned = cleaned.trim();
+  // Strip leading apostrophe (Excel text-force: '4160 → 4160)
+  if (cleaned.startsWith("'")) cleaned = cleaned.slice(1);
+  // Strip leading equals sign (formula artifact: =SKU123 → SKU123)
+  if (cleaned.startsWith("=")) cleaned = cleaned.slice(1);
+  // Strip surrounding double quotes ("SKU-001" → SKU-001)
+  if (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length >= 2) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  // Final trim
+  return cleaned.trim();
 }

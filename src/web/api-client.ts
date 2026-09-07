@@ -189,6 +189,16 @@ export type ProductListItem = {
   firstSku?: string | null;
   firstPrice?: string | null;
   tags: string[];
+  variants?: Array<{
+    sourceKey: string;
+    sku?: string | null;
+    barcode?: string | null;
+    price?: string | null;
+    options: Record<string, string>;
+    inventoryQuantity?: number | null;
+    weight?: number | null;
+    weightUnit?: string | null;
+  }>;
 };
 
 export type ProductsResponse = {
@@ -567,9 +577,10 @@ export async function findSimilarIssues(
   catalogId: string,
   issueCode: string,
   field?: string,
+  sourceKey?: string,
 ): Promise<SimilarIssuesResponse> {
   return request(`/catalogs/${catalogId}/edit/similar`, {
     method: "POST",
-    body: JSON.stringify({ issueCode, field }),
+    body: JSON.stringify({ issueCode, field, sourceKey }),
   });
 }

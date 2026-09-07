@@ -286,6 +286,16 @@ router.get("/:id/products", async (req, res, next) => {
           firstSku: data.variants?.[0]?.sku ?? null,
           firstPrice: data.variants?.[0]?.price ?? null,
           tags: data.tags ?? [],
+          variants: data.variants?.map((v) => ({
+            sourceKey: v.sourceKey,
+            sku: v.sku ?? null,
+            barcode: v.barcode ?? null,
+            price: v.price ?? null,
+            options: v.options ?? {},
+            inventoryQuantity: v.inventoryQuantity ?? null,
+            weight: v.weight ?? null,
+            weightUnit: v.weightUnit ?? null,
+          })) ?? [],
         };
       }),
     });

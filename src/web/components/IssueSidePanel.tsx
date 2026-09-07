@@ -18,7 +18,6 @@ import {
   Banner,
   Spinner,
   Select,
-  Collapsible,
 } from "@shopify/polaris";
 import { bulkEdit, type EditIssue, type SimilarIssuesResponse } from "../api-client.js";
 
@@ -48,7 +47,6 @@ export function IssueSidePanel({
   const [applying, setApplying] = useState(false);
   const [applyingAll, setApplyingAll] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [fieldsExpanded, setFieldsExpanded] = useState(true);
 
   const isTemplatePattern = suggestedFix?.pattern === "template" || suggestedFix?.pattern === "per_variant";
 
@@ -114,54 +112,34 @@ export function IssueSidePanel({
     <Card>
       <BlockStack gap="400">
         {/* Header */}
-        <InlineStack align="space-between">
+        <BlockStack gap="100">
           <InlineStack gap="200">
             {severityBadge(issue.severity)}
-            <Text as="h3" variant="headingSm">{issue.code}</Text>
+            <Text as="h3" variant="headingSm">{issue.message}</Text>
           </InlineStack>
-        </InlineStack>
-
-        <Text as="p" variant="bodyMd">{issue.message}</Text>
-
-        {issue.sourceKey && (
           <Text as="p" variant="bodySm" tone="subdued">
-            Product: {issue.sourceKey}
+            {String(similarCount)} product{similarCount !== 1 ? "s" : ""} with the same issue
           </Text>
-        )}
-
-        <Text as="p" variant="bodySm">
-          <strong>{String(similarCount)}</strong> product(s) affected
-        </Text>
+        </BlockStack>
 
         <Divider />
 
-        {/* Detected fields — collapsible */}
+        {/* Detected fields */}
         {detectedFields && detectedFields.length > 0 && (
           <BlockStack gap="200">
-            <Button
-              variant="plain"
-              onClick={() => setFieldsExpanded(!fieldsExpanded)}
-              fullWidth
-              textAlign="left"
-            >
-              {fieldsExpanded ? "▾" : "▸"} Product details ({String(detectedFields.length)} fields)
-            </Button>
-            <Collapsible
-              open={fieldsExpanded}
-              id="detected-fields"
-              transition={{ duration: "200ms", timingFunction: "ease-in-out" }}
-            >
-              <Card>
-                <BlockStack gap="100">
-                  {detectedFields.map((f, i) => (
-                    <InlineStack key={i} gap="200" align="space-between">
-                      <Text as="span" variant="bodySm" tone="subdued">{f.label}</Text>
-                      <Text as="span" variant="bodySm" fontWeight="semibold">{f.value}</Text>
-                    </InlineStack>
-                  ))}
-                </BlockStack>
-              </Card>
-            </Collapsible>
+            <Text as="h4" variant="headingSm">
+              Product details ({String(detectedFields.length)} fields)
+            </Text>
+            <Card>
+              <BlockStack gap="100">
+                {detectedFields.map((f, i) => (
+                  <InlineStack key={i} gap="200" align="space-between">
+                    <Text as="span" variant="bodySm" tone="subdued">{f.label}</Text>
+                    <Text as="span" variant="bodySm" fontWeight="semibold">{f.value}</Text>
+                  </InlineStack>
+                ))}
+              </BlockStack>
+            </Card>
             <Divider />
           </BlockStack>
         )}

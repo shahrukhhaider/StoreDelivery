@@ -5,6 +5,7 @@ import {
   normalizeWeight,
   normalizeTags,
   normalizeText,
+  normalizeIdentifier,
 } from "./normalizer.js";
 
 describe("normalizePrice", () => {
@@ -175,5 +176,123 @@ describe("normalizeText", () => {
 
   it("preserves unicode", () => {
     expect(normalizeText("  Café Müller  ")).toBe("Café Müller");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeIdentifier — SKU, barcode, MPN cleanup
+// ---------------------------------------------------------------------------
+
+describe("normalizeIdentifier", () => {
+  it("strips leading apostrophe (Excel text-force)", () => {
+    expect(normalizeIdentifier("'4160")).toBe("4160");
+  });
+
+  it("strips leading equals sign (formula artifact)", () => {
+    expect(normalizeIdentifier("=SKU123")).toBe("SKU123");
+  });
+
+  it("strips surrounding double quotes", () => {
+    expect(normalizeIdentifier('"SKU-001"')).toBe("SKU-001");
+  });
+
+  it("trims whitespace", () => {
+    expect(normalizeIdentifier("  ABC-123  ")).toBe("ABC-123");
+  });
+
+  it("strips zero-width characters and BOM", () => {
+    expect(normalizeIdentifier("\uFEFFSKU-001")).toBe("SKU-001");
+    expect(normalizeIdentifier("SKU\u200B001")).toBe("SKU001");
+  });
+
+  it("strips control characters", () => {
+    expect(normalizeIdentifier("SKU\x00\x01001")).toBe("SKU001");
+  });
+
+  it("returns empty string for null/empty input", () => {
+    expect(normalizeIdentifier("")).toBe("");
+    expect(normalizeIdentifier("  ")).toBe("");
+  });
+
+  it("preserves valid identifiers unchanged", () => {
+    expect(normalizeIdentifier("SKU-001")).toBe("SKU-001");
+    expect(normalizeIdentifier("ABC123")).toBe("ABC123");
+    expect(normalizeIdentifier("0123456789")).toBe("0123456789");
+  });
+
+  it("handles combined artifacts", () => {
+    expect(normalizeIdentifier("  '\"SKU-001\"  ")).toBe("SKU-001");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spreadsheet artifact cleanup (shared across normalizeText & normalizeIdentifier)
+// ---------------------------------------------------------------------------
+
+describe("normalizeText — spreadsheet artifact cleanup", () => {
+  it("strips BOM from start of string", () => {
+    expect(normalizeText("\uFEFFHello")).toBe("Hello");
+  });
+
+  it("strips zero-width characters", () => {
+    expect(normalizeText("He\u200Bllo")).toBe("Hello");
+  });
+
+  it("replaces Unicode replacement character with empty", () => {
+    expect(normalizeText("Hello\uFFFDWorld")).toBe("HelloWorld");
+  });
+
+  it("normalizes non-breaking spaces to regular spaces", () => {
+    expect(normalizeText("Hello\u00A0World")).toBe("Hello World");
+  });
+
+  it("normalizes smart quotes to straight quotes", () => {
+    expect(normalizeText("\u201CHello\u201D")).toBe('"Hello"');
+    expect(normalizeText("\u2018Hello\u2019")).toBe("'Hello'");
+  });
+
+  it("normalizes em-dash and en-dash to hyphen", () => {
+    expect(normalizeText("A\u2013B")).toBe("A-B");
+    expect(normalizeText("A\u2014B")).toBe("A-B");
+  });
+
+  it("returns empty for spreadsheet error values", () => {
+    expect(normalizeText("#N/A")).toBe("");
+    expect(normalizeText("#REF!")).toBe("");
+    expect(normalizeText("#VALUE!")).toBe("");
+    expect(normalizeText("NULL")).toBe("");
+    expect(normalizeText("null")).toBe("");
+    expect(normalizeText("#NAME?")).toBe("");
+    expect(normalizeText("#DIV/0!")).toBe("");
+    expect(normalizeText("#NULL!")).toBe("");
+  });
+
+  it("preserves 'N/A' as a value (only #N/A is an error)", () => {
+    expect(normalizeText("N/A")).toBe("N/A");
+  });
+});
+
+describe("normalizeIdentifier — spreadsheet artifact cleanup", () => {
+  it("strips BOM + leading apostrophe combined", () => {
+    expect(normalizeIdentifier("\uFEFF'4160")).toBe("4160");
+  });
+
+  it("returns empty for null/NULL/nil", () => {
+    expect(normalizeIdentifier("null")).toBe("");
+    expect(normalizeIdentifier("NULL")).toBe("");
+    expect(normalizeIdentifier("nil")).toBe("");
+  });
+
+  it("returns empty for #N/A and other error values", () => {
+    expect(normalizeIdentifier("#N/A")).toBe("");
+    expect(normalizeIdentifier("#REF!")).toBe("");
+  });
+
+  it("normalizes non-breaking space in identifier", () => {
+    expect(normalizeIdentifier("SKU\u00A0001")).toBe("SKU 001");
+  });
+
+  it("strips replacement character from encoding errors", () => {
+    expect(normalizeIdentifier("SKU\uFFFD001")).toBe("SKU001");
   });
 });

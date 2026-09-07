@@ -725,6 +725,7 @@ router.get("/:id/edit/products", async (req, res, next) => {
 const similarSchema = z.object({
   issueCode: z.string(),
   field: z.string().optional(),
+  sourceKey: z.string().optional(),
 });
 
 router.post("/:id/edit/similar", async (req, res, next) => {
@@ -814,12 +815,14 @@ router.post("/:id/edit/similar", async (req, res, next) => {
       };
     }
 
-    // Detect all fields from the first affected product (for context)
+    // Detect all fields from the target product (for context in the side panel)
+    // Use the requested sourceKey if provided, otherwise fall back to first affected
     const detectedFields: Array<{ label: string; value: string }> = [];
-    if (affectedKeys.length > 0) {
-      const firstAffected = resolvedProducts.find((p) => p.sourceKey === affectedKeys[0]);
-      if (firstAffected) {
-        const r = firstAffected.resolved;
+    const targetKey = body.sourceKey ?? affectedKeys[0];
+    if (targetKey) {
+      const targetProduct = resolvedProducts.find((p) => p.sourceKey === targetKey);
+      if (targetProduct) {
+        const r = targetProduct.resolved;
         if (r.title) detectedFields.push({ label: "Title", value: r.title });
         if (r.description) detectedFields.push({ label: "Description", value: r.description.slice(0, 100) + (r.description.length > 100 ? "…" : "") });
         if (r.vendor) detectedFields.push({ label: "Vendor", value: r.vendor });

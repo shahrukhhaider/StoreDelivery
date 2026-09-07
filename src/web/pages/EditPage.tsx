@@ -49,7 +49,7 @@ type Props = {
 // ---------------------------------------------------------------------------
 
 const FILTER_TABS = [
-  { id: "all", content: "All" },
+  { id: "ready", content: "Ready" },
   { id: "blocking", content: "Blocking" },
   { id: "warning", content: "Warnings" },
 ];
@@ -195,6 +195,12 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   const [similarDataMap, setSimilarDataMap] = useState<Map<string, SimilarIssuesResponse>>(new Map());
   const [loadingSimilar, setLoadingSimilar] = useState(false);
 
+  // Expanded product rows (shows variant sub-rows)
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
+
+  // Selected product for side panel (shown for all rows, not just issues)
+  const [selectedProductKey, setSelectedProductKey] = useState<string | null>(null);
+
   // -------------------------------------------------------------------------
   // Data loading
   // -------------------------------------------------------------------------
@@ -208,17 +214,15 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       // Map tab to filter
       if (selectedTab.id === "blocking") issueOpts.severity = "blocking";
       else if (selectedTab.id === "warning") issueOpts.severity = "warning";
-      else if (selectedTab.id !== "all") issueOpts.type = selectedTab.id;
 
       // Build preview filters to match the tab
       const previewFilters: { severity?: string; issueType?: string } = {};
       if (selectedTab.id === "blocking") previewFilters.severity = "blocking";
       else if (selectedTab.id === "warning") previewFilters.severity = "warning";
-      else if (selectedTab.id !== "all") previewFilters.issueType = selectedTab.id;
 
       const [issueRes, previewRes] = await Promise.all([
         getEditIssues(catalogId, issueOpts),
-        getEditPreview(catalogId, p, 20, selectedTab.id === "all" ? undefined : previewFilters),
+        getEditPreview(catalogId, p, 20, (selectedTab.id === "blocking" || selectedTab.id === "warning") ? previewFilters : undefined),
       ]);
 
       setSummary(issueRes.summary);
@@ -291,6 +295,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
 
   const handleIssueClick = useCallback(async (productIssues: EditIssue[]) => {
     setSelectedProductIssues(productIssues);
+    setSelectedProductKey(productIssues[0]?.sourceKey ?? null);
     setLoadingSimilar(true);
     setSimilarDataMap(new Map());
     try {
@@ -299,7 +304,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       for (const issue of productIssues) {
         if (seenCodes.has(issue.code)) continue;
         seenCodes.add(issue.code);
-        const data = await findSimilarIssues(catalogId, issue.code, issue.field ?? undefined);
+        const data = await findSimilarIssues(catalogId, issue.code, issue.field ?? undefined, issue.sourceKey ?? undefined);
         newMap.set(issue.code, data);
       }
       setSimilarDataMap(newMap);
@@ -312,11 +317,13 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
 
   const handleSidePanelClose = useCallback(() => {
     setSelectedProductIssues([]);
+    setSelectedProductKey(null);
     setSimilarDataMap(new Map());
   }, []);
 
   const handleSidePanelResolved = useCallback(() => {
     setSelectedProductIssues([]);
+    setSelectedProductKey(null);
     setSimilarDataMap(new Map());
     reload();
   }, [reload]);
@@ -340,38 +347,59 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
 
   const readyCount = total - (summary?.blocking ?? 0);
   const hasEdits = overrideStats.totalOverrides > 0;
-  const sidebarOpen = selectedProductIssues.length > 0;
+  const sidebarOpen = selectedProductKey !== null;
 
   // Tab content with counts
   const tabs = FILTER_TABS.map((tab) => {
     let count: number;
-    if (tab.id === "all") count = totalProducts;
+    if (tab.id === "ready") count = totalProducts - (severityProductCounts["blocking"] ?? 0) - (severityProductCounts["warning"] ?? 0);
     else if (tab.id === "blocking") count = severityProductCounts["blocking"] ?? 0;
     else if (tab.id === "warning") count = severityProductCounts["warning"] ?? 0;
-    else count = typeProductCounts[tab.id] ?? 0;
+    else count = 0;
     return {
       ...tab,
       content: `${tab.content} (${count})`,
     };
   });
 
-  // Product rows
-  const rowMarkup = products.map((p, index) => {
+  // Product rows with expandable variant sub-rows
+  const rowMarkup: React.ReactNode[] = [];
+  let position = 0;
+
+  for (const p of products) {
     const resolved = p.resolved as CatalogProduct;
     const source = (p.source ?? p.resolved) as CatalogProduct;
     const firstVariant = resolved.variants?.[0];
     const sourceFirstVariant = source.variants?.[0];
-
-    // Find issues for this product
     const productIssues = issues.filter((i) => i.sourceKey === p.sourceKey);
+    const isExpanded = expandedProducts.has(p.id);
+    const variantCount = resolved.variants?.length ?? 0;
 
-    return (
+    // Product row
+    rowMarkup.push(
       <IndexTable.Row
         id={p.id}
         key={p.id}
-        position={index}
+        position={position++}
         onClick={() => {
-          if (productIssues.length > 0) handleIssueClick(productIssues);
+          if (productIssues.length > 0) {
+            handleIssueClick(productIssues);
+          } else {
+            // Ready row — show product details in side panel without issues
+            setSelectedProductIssues([]);
+            setSelectedProductKey(p.sourceKey);
+            setSimilarDataMap(new Map());
+            // Load detected fields for the product
+            setLoadingSimilar(true);
+            findSimilarIssues(catalogId, "MISSING_SKU", undefined, p.sourceKey)
+              .then((data) => {
+                const fieldMap = new Map<string, SimilarIssuesResponse>();
+                fieldMap.set("__product_details__", data);
+                setSimilarDataMap(fieldMap);
+              })
+              .catch(() => {})
+              .finally(() => setLoadingSimilar(false));
+          }
         }}
       >
         <IndexTable.Cell>
@@ -417,14 +445,110 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
           />
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <Text as="span" variant="bodySm">{resolved.variants?.length ?? 0}</Text>
+          {variantCount > 1 ? (
+            <span
+              role="button"
+              tabIndex={0}
+              style={{ cursor: "pointer" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedProducts((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(p.id)) next.delete(p.id);
+                  else next.add(p.id);
+                  return next;
+                });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.stopPropagation();
+                  setExpandedProducts((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(p.id)) next.delete(p.id);
+                    else next.add(p.id);
+                    return next;
+                  });
+                }
+              }}
+            >
+              <Text as="span" variant="bodySm">
+                {isExpanded ? "▾" : "▸"} {String(variantCount)} variants
+              </Text>
+            </span>
+          ) : (
+            <Text as="span" variant="bodySm">{variantCount}</Text>
+          )}
         </IndexTable.Cell>
         <IndexTable.Cell>
           <Text as="span" variant="bodySm">{resolved.images?.length ?? 0}</Text>
         </IndexTable.Cell>
-      </IndexTable.Row>
+      </IndexTable.Row>,
     );
-  });
+
+    // Variant sub-rows (when expanded)
+    if (isExpanded && variantCount > 1) {
+      for (let vi = 0; vi < resolved.variants.length; vi++) {
+        const variant = resolved.variants[vi];
+        const sourceVariant = source.variants?.[vi];
+        const optionStr = Object.entries(variant.options ?? {})
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(", ") || "—";
+
+        rowMarkup.push(
+          <IndexTable.Row
+            id={`${p.id}-v${vi}`}
+            key={`${p.id}-v${vi}`}
+            position={position++}
+          >
+            <IndexTable.Cell>
+              <span style={{ paddingLeft: "20px", color: "var(--p-color-text-subdued)" }}>
+                ↳
+              </span>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {variant.sku ?? "—"}
+              </Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {optionStr}
+              </Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <EditableCell
+                value={variant.price ?? ""}
+                originalValue={p.hasOverrides ? (sourceVariant?.price ?? "") : undefined}
+                field={`variants[${vi}].price`}
+                productId={p.id}
+                catalogId={catalogId}
+                onSave={reload}
+              />
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {variant.barcode ?? "—"}
+              </Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {variant.inventoryQuantity ?? "—"}
+              </Text>
+            </IndexTable.Cell>
+            <IndexTable.Cell>
+              {variant.weight != null ? (
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {variant.weight} {variant.weightUnit ?? ""}
+                </Text>
+              ) : (
+                <Text as="span" variant="bodySm" tone="subdued">—</Text>
+              )}
+            </IndexTable.Cell>
+          </IndexTable.Row>,
+        );
+      }
+    }
+  }
 
   return (
     <Page
@@ -432,7 +556,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       subtitle={`${total} products${overrideStats.productsWithOverrides > 0 ? ` · ${overrideStats.productsWithOverrides} edited` : ""}`}
       backAction={{ onAction: onBack }}
       primaryAction={{
-        content: readyCount > 0 ? `Import ${readyCount} products` : "No products to import",
+        content: readyCount > 0 ? "Review Catalog Changes" : "No changes to review",
         onAction: () => onImport(catalogId),
         disabled: readyCount === 0,
       }}
@@ -506,6 +630,40 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
         {/* Filter Tabs */}
         <Tabs tabs={tabs} selected={activeTab} onSelect={setActiveTab} />
 
+        {/* Catalog-level issues — shown inside the active tab context */}
+        {(() => {
+          const selectedTab = FILTER_TABS[activeTab];
+          if (selectedTab.id === "ready") return null; // Ready tab stays clean
+
+          const catalogIssues = issues.filter((i) => !i.sourceKey);
+
+          let filtered = catalogIssues;
+          if (selectedTab.id === "blocking") {
+            filtered = catalogIssues.filter((i) => i.severity === "blocking");
+          } else if (selectedTab.id === "warning") {
+            filtered = catalogIssues.filter((i) => i.severity === "warning");
+          }
+          // "all" shows everything
+
+          if (filtered.length === 0) return null;
+
+          const hasBlocking = filtered.some((i) => i.severity === "blocking");
+          return (
+            <Banner
+              title={`${filtered.length} catalog-level issue${filtered.length !== 1 ? "s" : ""}`}
+              tone={hasBlocking ? "critical" : "warning"}
+            >
+              <BlockStack gap="100">
+                {filtered.map((w, i) => (
+                  <Text as="p" variant="bodySm" key={i}>
+                    • <strong>{w.code}</strong>: {w.message}
+                  </Text>
+                ))}
+              </BlockStack>
+            </Banner>
+          );
+        })()}
+
         {/* Product Grid */}
         <Card padding="0">
           <IndexTable
@@ -561,19 +719,41 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
             <Card>
               <InlineStack align="center" gap="200">
                 <Spinner size="small" />
-                <Text as="p">Finding similar issues...</Text>
+                <Text as="p">Loading product details...</Text>
               </InlineStack>
             </Card>
           ) : (
             <BlockStack gap="400">
               <InlineStack align="space-between">
                 <Text as="h2" variant="headingMd">
-                  {selectedProductIssues.length} issue{selectedProductIssues.length !== 1 ? "s" : ""} for this product
+                  {selectedProductIssues.length > 0
+                    ? `${selectedProductIssues.length} issue${selectedProductIssues.length !== 1 ? "s" : ""} for this product`
+                    : "Product Details"}
                 </Text>
                 <Button variant="plain" onClick={handleSidePanelClose}>✕</Button>
               </InlineStack>
 
-              {/* Deduplicate by issue code — one card per issue type */}
+              {/* Product details card — shown for all rows */}
+              {(() => {
+                const detailsData = similarDataMap.get(selectedProductIssues[0]?.code ?? "__product_details__");
+                if (detailsData?.detectedFields && detailsData.detectedFields.length > 0) {
+                  return (
+                    <Card>
+                      <BlockStack gap="100">
+                        {detailsData.detectedFields.map((f, i) => (
+                          <InlineStack key={i} gap="200" align="space-between">
+                            <Text as="span" variant="bodySm" tone="subdued">{f.label}</Text>
+                            <Text as="span" variant="bodySm" fontWeight="semibold">{f.value}</Text>
+                          </InlineStack>
+                        ))}
+                      </BlockStack>
+                    </Card>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Issue cards — only for rows with issues */}
               {[...new Map(selectedProductIssues.map((i) => [i.code, i])).values()].map((issue) => {
                 const similar = similarDataMap.get(issue.code);
                 return (
@@ -585,11 +765,19 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
                     similarKeys={similar?.affectedKeys ?? (issue.sourceKey ? [issue.sourceKey] : [])}
                     detectedFields={similar?.detectedFields}
                     suggestedFix={similar?.suggestedFix ?? undefined}
-                    onClose={() => {}} // individual cards don't close the sidebar
+                    onClose={() => {}}
                     onResolved={handleSidePanelResolved}
                   />
                 );
               })}
+
+              {selectedProductIssues.length === 0 && (
+                <Card>
+                  <Text as="p" variant="bodySm" tone="success">
+                    ✓ No issues — this product is ready for import.
+                  </Text>
+                </Card>
+              )}
             </BlockStack>
           )}
         </div>
