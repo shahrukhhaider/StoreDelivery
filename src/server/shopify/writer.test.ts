@@ -389,3 +389,98 @@ describe("option names flow from CSV to Shopify", () => {
     expect(allOptionNames).not.toContain("Option 2");
   });
 });
+
+// ---------------------------------------------------------------------------
+// SKU handling — Missing SKU spec
+// ---------------------------------------------------------------------------
+
+describe("SKU handling in productSet", () => {
+  it("trims whitespace from SKU", () => {
+    const product = makeProduct({
+      variants: [{
+        sourceKey: "V1",
+        sku: "  SKU-001  ",
+        options: {},
+        price: "10",
+        sourceData: {},
+      }],
+    });
+    const { productSet } = _buildProductSetInput(product, null);
+    const variants = productSet.variants as Array<Record<string, unknown>>;
+    expect(variants[0].sku).toBe("SKU-001");
+  });
+
+  it("omits SKU field entirely when SKU is undefined", () => {
+    const product = makeProduct({
+      variants: [{
+        sourceKey: "V1",
+        options: {},
+        price: "10",
+        sourceData: {},
+      }],
+    });
+    const { productSet } = _buildProductSetInput(product, null);
+    const variants = productSet.variants as Array<Record<string, unknown>>;
+    expect(variants[0]).not.toHaveProperty("sku");
+  });
+
+  it("omits SKU field when SKU is empty string", () => {
+    const product = makeProduct({
+      variants: [{
+        sourceKey: "V1",
+        sku: "",
+        options: {},
+        price: "10",
+        sourceData: {},
+      }],
+    });
+    const { productSet } = _buildProductSetInput(product, null);
+    const variants = productSet.variants as Array<Record<string, unknown>>;
+    expect(variants[0]).not.toHaveProperty("sku");
+  });
+
+  it("omits SKU field when SKU is whitespace-only", () => {
+    const product = makeProduct({
+      variants: [{
+        sourceKey: "V1",
+        sku: "   ",
+        options: {},
+        price: "10",
+        sourceData: {},
+      }],
+    });
+    const { productSet } = _buildProductSetInput(product, null);
+    const variants = productSet.variants as Array<Record<string, unknown>>;
+    expect(variants[0]).not.toHaveProperty("sku");
+  });
+
+  it("includes SKU when present and non-empty", () => {
+    const product = makeProduct({
+      variants: [{
+        sourceKey: "V1",
+        sku: "VALID-SKU",
+        options: {},
+        price: "10",
+        sourceData: {},
+      }],
+    });
+    const { productSet } = _buildProductSetInput(product, null);
+    const variants = productSet.variants as Array<Record<string, unknown>>;
+    expect(variants[0].sku).toBe("VALID-SKU");
+  });
+
+  it("handles mixed SKU presence across variants", () => {
+    const product = makeProduct({
+      variants: [
+        { sourceKey: "V1", sku: "HAS-SKU", options: { Color: "Red" }, price: "10", sourceData: {} },
+        { sourceKey: "V2", options: { Color: "Blue" }, price: "20", sourceData: {} },
+        { sourceKey: "V3", sku: "  ", options: { Color: "Green" }, price: "30", sourceData: {} },
+      ],
+    });
+    const { productSet } = _buildProductSetInput(product, null);
+    const variants = productSet.variants as Array<Record<string, unknown>>;
+    expect(variants[0].sku).toBe("HAS-SKU");
+    expect(variants[1]).not.toHaveProperty("sku");
+    expect(variants[2]).not.toHaveProperty("sku");
+  });
+});

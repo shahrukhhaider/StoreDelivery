@@ -5,7 +5,22 @@
  * blocking issues, warnings, and info-level messages.
  */
 
-import type { CatalogProduct, CatalogIssue, IssueSeverity } from "@shared/types/catalog.js";
+import type { CatalogProduct, CatalogIssue, IssueSeverity, SkuSource } from "@shared/types/catalog.js";
+
+export type SkuCoverage = {
+  /** Total variant count across all products */
+  totalVariants: number;
+  /** Variants that have a supplier- or merchant-provided SKU */
+  withSku: number;
+  /** Variants missing a SKU */
+  missingSku: number;
+  /** Variants with a StoreDelivery-generated SKU */
+  generatedSku: number;
+  /** Number of duplicate SKUs found */
+  duplicateSkus: number;
+  /** Number of products affected by missing SKUs */
+  productsAffected: number;
+};
 
 export type ValidationResult = {
   issues: CatalogIssue[];
@@ -13,6 +28,8 @@ export type ValidationResult = {
   warningCount: number;
   infoCount: number;
   autoFixedCount: number;
+  /** SKU coverage summary for the catalog */
+  skuCoverage: SkuCoverage;
 };
 
 const MAX_REASONABLE_PRICE = 99999;
@@ -31,12 +48,19 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
     issues.push(
       blocking("NO_PRODUCTS", "No products were extracted from the file"),
     );
-    return summarize(issues, autoFixedCount);
+    return summarize(issues, autoFixedCount, emptyCoverage());
   }
 
   // Track SKUs and barcodes for duplicate detection
   const seenSkus = new Map<string, string[]>(); // sku → sourceKeys
   const seenBarcodes = new Map<string, string[]>(); // barcode → sourceKeys
+
+  // SKU coverage tracking
+  let totalVariants = 0;
+  let withSku = 0;
+  let missingSku = 0;
+  let generatedSku = 0;
+  const missingSkuProducts = new Set<string>();
 
   for (const product of products) {
     // --- Blocking ---
@@ -65,7 +89,12 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
       );
     }
 
+    // Track per-product missing SKU count for aggregation
+    let productMissingSkuCount = 0;
+
     for (const variant of product.variants) {
+      totalVariants++;
+
       // Malformed price
       if (variant.price !== undefined) {
         const price = parseFloat(variant.price);
@@ -81,23 +110,24 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
         }
       }
 
-      // --- Warnings ---
+      // --- SKU tracking ---
+      const skuPresent = variant.sku != null && variant.sku.trim() !== "";
+      const source: SkuSource = variant.skuSource ?? (skuPresent ? "SUPPLIER" : "NONE");
 
-      // Missing SKU
-      if (!variant.sku) {
-        issues.push(
-          warning(
-            "MISSING_SKU",
-            "Variant is missing a SKU",
-            product.sourceKey,
-            "sku",
-          ),
-        );
+      if (skuPresent) {
+        if (source === "STOREDELIVERY_GENERATED") {
+          generatedSku++;
+        } else {
+          withSku++;
+        }
+      } else {
+        missingSku++;
+        productMissingSkuCount++;
       }
 
       // Track SKU for duplicates
-      if (variant.sku) {
-        const key = variant.sku.toLowerCase();
+      if (skuPresent) {
+        const key = variant.sku!.toLowerCase().trim();
         const existing = seenSkus.get(key) ?? [];
         existing.push(product.sourceKey);
         seenSkus.set(key, existing);
@@ -110,6 +140,8 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
         existing.push(product.sourceKey);
         seenBarcodes.set(key, existing);
       }
+
+      // --- Warnings ---
 
       // Suspicious price
       if (variant.price !== undefined) {
@@ -152,6 +184,20 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
       }
     }
 
+    // Aggregate MISSING_SKU: one issue per product, not per variant
+    if (productMissingSkuCount > 0) {
+      missingSkuProducts.add(product.sourceKey);
+      const variantLabel = productMissingSkuCount === 1 ? "variant" : "variants";
+      issues.push(
+        warning(
+          "MISSING_SKU",
+          `${productMissingSkuCount} ${variantLabel} missing a SKU`,
+          product.sourceKey,
+          "sku",
+        ),
+      );
+    }
+
     // Image URL syntax check
     for (const image of product.images) {
       if (!URL_SYNTAX_RE.test(image.sourceUrl)) {
@@ -168,8 +214,10 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
   }
 
   // Duplicate SKUs
+  let duplicateSkuCount = 0;
   for (const [sku, sourceKeys] of seenSkus) {
     if (sourceKeys.length > 1) {
+      duplicateSkuCount++;
       issues.push(
         warning(
           "DUPLICATE_SKU",
@@ -195,7 +243,16 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
     }
   }
 
-  return summarize(issues, autoFixedCount);
+  const skuCoverage: SkuCoverage = {
+    totalVariants,
+    withSku,
+    missingSku,
+    generatedSku,
+    duplicateSkus: duplicateSkuCount,
+    productsAffected: missingSkuProducts.size,
+  };
+
+  return summarize(issues, autoFixedCount, skuCoverage);
 }
 
 // ---------------------------------------------------------------------------
@@ -223,6 +280,7 @@ function warning(
 function summarize(
   issues: CatalogIssue[],
   autoFixedCount: number,
+  skuCoverage: SkuCoverage,
 ): ValidationResult {
   return {
     issues,
@@ -230,5 +288,17 @@ function summarize(
     warningCount: issues.filter((i) => i.severity === "warning").length,
     infoCount: issues.filter((i) => i.severity === "info").length,
     autoFixedCount,
+    skuCoverage,
+  };
+}
+
+function emptyCoverage(): SkuCoverage {
+  return {
+    totalVariants: 0,
+    withSku: 0,
+    missingSku: 0,
+    generatedSku: 0,
+    duplicateSkus: 0,
+    productsAffected: 0,
   };
 }

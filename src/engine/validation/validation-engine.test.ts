@@ -255,3 +255,184 @@ describe("validateCatalog", () => {
     expect(result.warningCount).toBeGreaterThanOrEqual(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// MISSING_SKU aggregation — one issue per product, not per variant
+// ---------------------------------------------------------------------------
+
+describe("MISSING_SKU aggregation", () => {
+  it("emits one MISSING_SKU per product, not per variant", () => {
+    const result = validateCatalog([
+      product({
+        sourceKey: "P1",
+        variants: [
+          { sourceKey: "V1", options: {}, price: "10", sourceData: {} },
+          { sourceKey: "V2", options: {}, price: "20", sourceData: {} },
+          { sourceKey: "V3", options: {}, price: "30", sourceData: {} },
+        ],
+      }),
+    ]);
+    const skuIssues = result.issues.filter((i) => i.code === "MISSING_SKU");
+    expect(skuIssues).toHaveLength(1); // one per product, not three
+    expect(skuIssues[0].sourceKey).toBe("P1");
+    expect(skuIssues[0].message).toContain("3 variants");
+  });
+
+  it("shows singular 'variant' for a single missing SKU", () => {
+    const result = validateCatalog([
+      product({
+        sourceKey: "P1",
+        variants: [
+          { sourceKey: "V1", options: {}, price: "10", sourceData: {} },
+        ],
+      }),
+    ]);
+    const skuIssues = result.issues.filter((i) => i.code === "MISSING_SKU");
+    expect(skuIssues).toHaveLength(1);
+    expect(skuIssues[0].message).toContain("1 variant ");
+    expect(skuIssues[0].message).not.toContain("variants");
+  });
+
+  it("does not emit MISSING_SKU for products with all SKUs present", () => {
+    const result = validateCatalog([
+      product({
+        sourceKey: "P1",
+        variants: [
+          { sourceKey: "V1", sku: "A", options: {}, price: "10", sourceData: {} },
+          { sourceKey: "V2", sku: "B", options: {}, price: "20", sourceData: {} },
+        ],
+      }),
+    ]);
+    const skuIssues = result.issues.filter((i) => i.code === "MISSING_SKU");
+    expect(skuIssues).toHaveLength(0);
+  });
+
+  it("emits separate MISSING_SKU for each affected product", () => {
+    const result = validateCatalog([
+      product({
+        sourceKey: "P1",
+        variants: [{ sourceKey: "V1", options: {}, price: "10", sourceData: {} }],
+      }),
+      product({
+        sourceKey: "P2",
+        variants: [
+          { sourceKey: "V2", sku: "HAS-SKU", options: {}, price: "10", sourceData: {} },
+        ],
+      }),
+      product({
+        sourceKey: "P3",
+        variants: [{ sourceKey: "V3", options: {}, price: "10", sourceData: {} }],
+      }),
+    ]);
+    const skuIssues = result.issues.filter((i) => i.code === "MISSING_SKU");
+    expect(skuIssues).toHaveLength(2); // P1 and P3, not P2
+    expect(skuIssues.map((i) => i.sourceKey).sort()).toEqual(["P1", "P3"]);
+  });
+
+  it("MISSING_SKU is a warning, never blocking", () => {
+    const result = validateCatalog([
+      product({
+        variants: [{ sourceKey: "V1", options: {}, price: "10", sourceData: {} }],
+      }),
+    ]);
+    const skuIssues = result.issues.filter((i) => i.code === "MISSING_SKU");
+    expect(skuIssues).toHaveLength(1);
+    expect(skuIssues[0].severity).toBe("warning");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SKU coverage
+// ---------------------------------------------------------------------------
+
+describe("skuCoverage", () => {
+  it("counts total variants across all products", () => {
+    const result = validateCatalog([
+      product({
+        sourceKey: "P1",
+        variants: [
+          { sourceKey: "V1", sku: "A", options: {}, price: "10", sourceData: {} },
+          { sourceKey: "V2", options: {}, price: "20", sourceData: {} },
+        ],
+      }),
+      product({
+        sourceKey: "P2",
+        variants: [
+          { sourceKey: "V3", sku: "B", options: {}, price: "30", sourceData: {} },
+        ],
+      }),
+    ]);
+    expect(result.skuCoverage.totalVariants).toBe(3);
+  });
+
+  it("counts withSku for supplier/merchant SKUs", () => {
+    const result = validateCatalog([
+      product({
+        sourceKey: "P1",
+        variants: [
+          { sourceKey: "V1", sku: "SUP-1", options: {}, price: "10", sourceData: {} },
+          { sourceKey: "V2", sku: "SUP-2", skuSource: "MERCHANT", options: {}, price: "20", sourceData: {} },
+        ],
+      }),
+    ]);
+    expect(result.skuCoverage.withSku).toBe(2);
+    expect(result.skuCoverage.missingSku).toBe(0);
+  });
+
+  it("counts generatedSku separately from withSku", () => {
+    const result = validateCatalog([
+      product({
+        sourceKey: "P1",
+        variants: [
+          { sourceKey: "V1", sku: "GEN-001", skuSource: "STOREDELIVERY_GENERATED", options: {}, price: "10", sourceData: {} },
+          { sourceKey: "V2", sku: "SUP-1", options: {}, price: "20", sourceData: {} },
+        ],
+      }),
+    ]);
+    expect(result.skuCoverage.generatedSku).toBe(1);
+    expect(result.skuCoverage.withSku).toBe(1);
+    expect(result.skuCoverage.missingSku).toBe(0);
+  });
+
+  it("counts missingSku and productsAffected", () => {
+    const result = validateCatalog([
+      product({
+        sourceKey: "P1",
+        variants: [
+          { sourceKey: "V1", options: {}, price: "10", sourceData: {} },
+          { sourceKey: "V2", options: {}, price: "20", sourceData: {} },
+        ],
+      }),
+      product({
+        sourceKey: "P2",
+        variants: [
+          { sourceKey: "V3", sku: "OK", options: {}, price: "30", sourceData: {} },
+        ],
+      }),
+    ]);
+    expect(result.skuCoverage.missingSku).toBe(2);
+    expect(result.skuCoverage.productsAffected).toBe(1); // only P1
+  });
+
+  it("counts duplicateSkus", () => {
+    const result = validateCatalog([
+      product({
+        sourceKey: "P1",
+        variants: [{ sourceKey: "V1", sku: "DUPE", options: {}, price: "10", sourceData: {} }],
+      }),
+      product({
+        sourceKey: "P2",
+        variants: [{ sourceKey: "V2", sku: "DUPE", options: {}, price: "20", sourceData: {} }],
+      }),
+    ]);
+    expect(result.skuCoverage.duplicateSkus).toBe(1); // "DUPE" is one duplicate
+  });
+
+  it("returns zero coverage for empty product list", () => {
+    const result = validateCatalog([]);
+    expect(result.skuCoverage.totalVariants).toBe(0);
+    expect(result.skuCoverage.withSku).toBe(0);
+    expect(result.skuCoverage.missingSku).toBe(0);
+    expect(result.skuCoverage.generatedSku).toBe(0);
+  });
+});

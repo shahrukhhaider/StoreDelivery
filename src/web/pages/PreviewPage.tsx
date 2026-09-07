@@ -29,6 +29,7 @@ import {
   type IssuesResponse,
   type PlanResponse,
 } from "../api-client.js";
+import { SkuGenerationModal } from "../components/SkuGenerationModal.js";
 
 type Props = {
   catalogId: string;
@@ -48,6 +49,7 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
+  const [skuModalOpen, setSkuModalOpen] = useState(false);
 
   const loadData = useCallback(
     async (p: number) => {
@@ -232,13 +234,86 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
           </Banner>
         )}
 
-        {issues && issues.warning && issues.warning.length > 0 && (
+        {/* SKU Coverage Summary */}
+        {issues?.skuCoverage && issues.skuCoverage.totalVariants > 0 && (
+          <Card>
+            <BlockStack gap="300">
+              <Text as="h3" variant="headingSm">
+                SKU coverage
+              </Text>
+              <InlineStack gap="600">
+                <BlockStack gap="100">
+                  <Text as="p" variant="headingLg">
+                    {issues.skuCoverage.withSku + issues.skuCoverage.generatedSku}
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {issues.skuCoverage.generatedSku > 0
+                      ? `${issues.skuCoverage.withSku} source + ${issues.skuCoverage.generatedSku} generated`
+                      : "supplier/merchant SKUs"}
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="p" variant="headingLg" tone={issues.skuCoverage.missingSku > 0 ? "caution" : "success"}>
+                    {issues.skuCoverage.missingSku}
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    missing SKUs
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="p" variant="headingLg">
+                    {issues.skuCoverage.duplicateSkus}
+                  </Text>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    duplicate SKUs
+                  </Text>
+                </BlockStack>
+              </InlineStack>
+              {issues.skuCoverage.missingSku > 0 && (
+                <>
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    ✓ Missing SKUs won't block this import
+                  </Text>
+                  <InlineStack gap="200">
+                    <Button variant="plain" onClick={() => setSkuModalOpen(true)}>
+                      Generate SKUs…
+                    </Button>
+                  </InlineStack>
+                </>
+              )}
+            </BlockStack>
+          </Card>
+        )}
+
+        {/* MISSING_SKU Warning Banner — separate from other warnings */}
+        {issues?.skuCoverage && issues.skuCoverage.missingSku > 0 && (
+          <Banner
+            title={`${issues.skuCoverage.missingSku} variant${issues.skuCoverage.missingSku !== 1 ? "s" : ""} do not have SKUs`}
+            tone="warning"
+          >
+            <BlockStack gap="200">
+              <Text as="p" variant="bodyMd">
+                Shopify allows products to be imported without SKUs. However, unique SKUs
+                can make inventory operations, fulfillment, supplier matching, and
+                third-party integrations easier.
+              </Text>
+              <InlineStack gap="200">
+                <Button variant="plain" onClick={() => setSkuModalOpen(true)}>
+                  Generate SKUs…
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Banner>
+        )}
+
+        {/* Other Warnings (excluding MISSING_SKU which has its own banner) */}
+        {issues && issues.warning && issues.warning.filter((w) => w.code !== "MISSING_SKU").length > 0 && (
           <Banner title="Warnings" tone="warning">
             <BlockStack gap="100">
               {(() => {
-                // Group warnings by code and count unique products
+                // Group warnings by code and count unique products, excluding MISSING_SKU
                 const groups = new Map<string, { message: string; keys: Set<string> }>();
-                for (const issue of issues.warning) {
+                for (const issue of issues.warning.filter((w) => w.code !== "MISSING_SKU")) {
                   const existing = groups.get(issue.code);
                   if (existing) {
                     if (issue.sourceKey) existing.keys.add(issue.sourceKey);
@@ -337,6 +412,34 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
                     </Text>
                   )}
                 </BlockStack>
+
+                {/* SKU Summary in Import Plan */}
+                {issues?.skuCoverage && (
+                  <>
+                    <Divider />
+                    <Text as="h3" variant="headingSm">
+                      SKU coverage
+                    </Text>
+                    <BlockStack gap="100">
+                      {issues.skuCoverage.withSku > 0 && (
+                        <Text as="p" variant="bodyMd">
+                          {issues.skuCoverage.withSku} supplier/merchant SKUs
+                        </Text>
+                      )}
+                      {issues.skuCoverage.generatedSku > 0 && (
+                        <Text as="p" variant="bodyMd">
+                          {issues.skuCoverage.generatedSku} StoreDelivery-generated SKUs
+                        </Text>
+                      )}
+                      {issues.skuCoverage.missingSku > 0 && (
+                        <Text as="p" variant="bodyMd" tone="subdued">
+                          {issues.skuCoverage.missingSku} missing (won't block import)
+                        </Text>
+                      )}
+                    </BlockStack>
+                  </>
+                )}
+
                 <Divider />
                 <Text as="p" variant="bodySm" tone="subdued">
                   Existing products will not be modified.
@@ -345,6 +448,18 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
             </Modal.Section>
           </Modal>
         )}
+
+        {/* SKU Generation Modal */}
+        <SkuGenerationModal
+          open={skuModalOpen}
+          catalogId={catalogId}
+          missingCount={issues?.skuCoverage?.missingSku ?? 0}
+          onClose={() => setSkuModalOpen(false)}
+          onGenerated={() => {
+            setSkuModalOpen(false);
+            loadData(page);
+          }}
+        />
       </BlockStack>
     </Page>
   );

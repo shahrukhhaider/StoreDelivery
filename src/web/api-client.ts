@@ -225,9 +225,19 @@ export type IssueItem = {
   field: string | null;
 };
 
+export type SkuCoverageResponse = {
+  totalVariants: number;
+  withSku: number;
+  missingSku: number;
+  generatedSku: number;
+  duplicateSkus: number;
+  productsAffected: number;
+};
+
 export type IssuesResponse = {
   blocking: IssueItem[];
   warning: IssueItem[];
+  skuCoverage?: SkuCoverageResponse;
   summary: {
     total: number;
     ready: number;
@@ -240,6 +250,38 @@ export type IssuesResponse = {
 
 export async function getIssues(catalogId: string): Promise<IssuesResponse> {
   return request(`/catalogs/${catalogId}/issues`);
+}
+
+// ---------------------------------------------------------------------------
+// SKU Generation
+// ---------------------------------------------------------------------------
+
+export type SkuGenerateResponse = {
+  preview: boolean;
+  applied?: boolean;
+  format: string;
+  samples?: string[];
+  totalMissing?: number;
+  successCount?: number;
+  collisionCount?: number;
+  collisions?: Array<{
+    generatedSku: string;
+    productSourceKey: string;
+    variantIndex: number;
+    collidesWithDescription: string;
+    collisionType: "catalog" | "shopify";
+  }>;
+};
+
+export async function generateSkus(
+  catalogId: string,
+  format: string,
+  preview = false,
+): Promise<SkuGenerateResponse> {
+  return request(`/catalogs/${catalogId}/generate-skus`, {
+    method: "POST",
+    body: JSON.stringify({ format, preview }),
+  });
 }
 
 // ---------------------------------------------------------------------------

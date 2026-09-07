@@ -4,6 +4,7 @@
 
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { getPrisma } from "../db.js";
 import { getStorage } from "../storage/file-storage.js";
 import { getLogger } from "../logger.js";
@@ -400,6 +401,7 @@ router.get("/:id/issues", async (req, res, next) => {
     const issues = {
       blocking: blockingIssues,
       warning: warningIssues,
+      skuCoverage: validationResult.skuCoverage,
       summary: {
         total: products.length,
         ready: products.filter((p) => p.status === "ready").length,
@@ -554,6 +556,274 @@ router.get("/:id/plan", async (req, res, next) => {
       skippedCount: operation.skippedCount,
       createdAt: operation.createdAt,
       completedAt: operation.completedAt,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/catalogs/:id/generate-skus — Generate SKUs for variants missing them.
+ *
+ * Body: { format?: string, preview?: boolean }
+ * - format: template string (default: "{productHandle}-{variantIndex:003}")
+ * - preview: if true, return preview samples without applying
+ *
+ * When preview=false, generated SKUs are applied as overrides with source "bulk_rule".
+ */
+router.post("/:id/generate-skus", async (req, res, next) => {
+  try {
+    const prisma = getPrisma();
+    const logger = getLogger();
+    const shopId = getShopId(req);
+
+    const catalog = await prisma.catalog.findFirst({
+      where: { id: req.params.id, shopId },
+    });
+    if (!catalog) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+
+    const { generateSkus, previewSkus, collectCatalogSkus, DEFAULT_SKU_FORMAT } =
+      await import("../../engine/sku/index.js");
+    const { applyOverrides } = await import("../../engine/overrides/merge.js");
+
+    const format = (req.body?.format as string) ?? DEFAULT_SKU_FORMAT;
+    const isPreview = req.body?.preview === true;
+
+    // Load products with overrides applied
+    const dbProducts = await prisma.catalogProduct.findMany({
+      where: { catalogId: catalog.id },
+    });
+
+    const overrides = await prisma.catalogOverride.findMany({
+      where: { catalogId: catalog.id },
+    });
+    const overridesByProduct = new Map<string, Array<{ field: string; oldValue: unknown; newValue: unknown; source: string }>>();
+    for (const o of overrides) {
+      const list = overridesByProduct.get(o.productId) ?? [];
+      list.push({ field: o.field, oldValue: o.oldValue, newValue: o.newValue, source: o.source });
+      overridesByProduct.set(o.productId, list);
+    }
+
+    const resolvedProducts = dbProducts.map((p) => {
+      const source = p.normalizedJson as unknown as CatalogProduct;
+      const productOverrides = (overridesByProduct.get(p.id) ?? []).map((o) => ({
+        field: o.field,
+        oldValue: o.oldValue,
+        newValue: o.newValue,
+        source: o.source as "user" | "bulk_rule" | "auto_fix",
+      }));
+      return applyOverrides(source, productOverrides);
+    });
+
+    // Preview mode: return sample SKUs
+    if (isPreview) {
+      const samples = previewSkus(resolvedProducts, format, 5);
+      res.json({ preview: true, format, samples });
+      return;
+    }
+
+    // Full generation: collect existing SKUs for collision detection
+    const existingCatalogSkus = collectCatalogSkus(resolvedProducts);
+
+    const result = generateSkus(resolvedProducts, {
+      format,
+      existingCatalogSkus,
+      // Shopify SKU collision check is deferred to import-time duplicate detection
+      // for now — fetching live Shopify data here would add latency
+    });
+
+    // If there are collisions, return them as blocking — do not apply
+    if (result.collisionCount > 0) {
+      res.json({
+        preview: false,
+        applied: false,
+        format,
+        totalMissing: result.totalMissing,
+        successCount: result.successCount,
+        collisionCount: result.collisionCount,
+        collisions: result.collisions.slice(0, 20), // cap for response size
+      });
+      return;
+    }
+
+    // Apply generated SKUs as overrides
+    // Build a sourceKey → dbProduct.id lookup
+    const sourceKeyToDbId = new Map<string, string>();
+    for (const p of dbProducts) {
+      sourceKeyToDbId.set(p.sourceKey, p.id);
+    }
+
+    let appliedCount = 0;
+    for (const gen of result.generated) {
+      const dbId = sourceKeyToDbId.get(gen.productSourceKey);
+      if (!dbId) continue;
+
+      // Create override for variant SKU
+      const field = `variants[${gen.variantIndex}].sku`;
+      await prisma.catalogOverride.create({
+        data: {
+          catalogId: catalog.id,
+          productId: dbId,
+          field,
+          oldValue: Prisma.JsonNull,
+          newValue: gen.sku,
+          source: "bulk_rule",
+        },
+      });
+
+      // Also set skuSource provenance
+      const sourceField = `variants[${gen.variantIndex}].skuSource`;
+      await prisma.catalogOverride.create({
+        data: {
+          catalogId: catalog.id,
+          productId: dbId,
+          field: sourceField,
+          oldValue: Prisma.JsonNull,
+          newValue: "STOREDELIVERY_GENERATED",
+          source: "bulk_rule",
+        },
+      });
+
+      appliedCount++;
+    }
+
+    logger.info("SKUs generated and applied", {
+      catalogId: catalog.id,
+      format,
+      totalMissing: result.totalMissing,
+      applied: appliedCount,
+    });
+
+    res.json({
+      preview: false,
+      applied: true,
+      format,
+      totalMissing: result.totalMissing,
+      successCount: appliedCount,
+      collisionCount: 0,
+      collisions: [],
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/catalogs/:id/reconciliation — Reconciliation summary and classifications.
+ */
+router.get("/:id/reconciliation", async (req, res, next) => {
+  try {
+    const prisma = getPrisma();
+    const shopId = getShopId(req);
+
+    const catalog = await prisma.catalog.findFirst({
+      where: { id: req.params.id, shopId },
+    });
+    if (!catalog) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+
+    // Find the latest CatalogRun for this catalog
+    const latestRun = await prisma.catalogRun.findFirst({
+      where: { catalogId: catalog.id, shopId },
+      orderBy: { startedAt: "desc" },
+      include: {
+        items: {
+          orderBy: { sourceProductKey: "asc" },
+          select: {
+            id: true,
+            sourceProductKey: true,
+            classification: true,
+            proposedAction: true,
+            matchedShopifyId: true,
+            confidence: true,
+            matchEvidence: true,
+            merchantConfirmed: true,
+          },
+        },
+      },
+    });
+
+    if (!latestRun) {
+      res.json({
+        catalogId: catalog.id,
+        hasRun: false,
+        summary: null,
+        classifications: [],
+      });
+      return;
+    }
+
+    res.json({
+      catalogId: catalog.id,
+      hasRun: true,
+      catalogRunId: latestRun.id,
+      supplierProfileId: latestRun.supplierProfileId,
+      summary: {
+        totalProducts: latestRun.totalProducts,
+        existingMapped: latestRun.mappedCount,
+        likelyExisting: latestRun.matchedCount,
+        newProducts: latestRun.newCount,
+        needsReview: latestRun.reviewCount,
+      },
+      classifications: latestRun.items,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/catalogs/:id/reconciliation/confirm — Confirm candidate matches.
+ */
+router.post("/:id/reconciliation/confirm", async (req, res, next) => {
+  try {
+    const prisma = getPrisma();
+    const shopId = getShopId(req);
+
+    const catalog = await prisma.catalog.findFirst({
+      where: { id: req.params.id, shopId },
+    });
+    if (!catalog) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+
+    const sourceProductKeys = req.body?.sourceProductKeys as string[] | undefined;
+    if (!sourceProductKeys || !Array.isArray(sourceProductKeys) || sourceProductKeys.length === 0) {
+      res.status(400).json({ error: "INVALID_INPUT", message: "sourceProductKeys array required" });
+      return;
+    }
+
+    // Find latest run
+    const latestRun = await prisma.catalogRun.findFirst({
+      where: { catalogId: catalog.id, shopId },
+      orderBy: { startedAt: "desc" },
+    });
+
+    if (!latestRun) {
+      res.status(400).json({ error: "NO_RUN", message: "No reconciliation run found for this catalog" });
+      return;
+    }
+
+    const { confirmCandidateMatches } = await import("../reconciliation/reconciliation-service.js");
+
+    const result = await confirmCandidateMatches(
+      shopId,
+      latestRun.supplierProfileId,
+      latestRun.id,
+      sourceProductKeys,
+    );
+
+    res.json({
+      catalogId: catalog.id,
+      catalogRunId: latestRun.id,
+      confirmed: result.confirmed,
+      requested: sourceProductKeys.length,
     });
   } catch (err) {
     next(err);

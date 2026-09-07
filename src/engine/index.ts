@@ -10,5 +10,7 @@ export * from "./mapping/index.js";
 export * from "./grouping/index.js";
 export * from "./validation/index.js";
 export * from "./normalizer/index.js";
+export * from "./sku/index.js";
+export * from "./reconciliation/index.js";
 export { processCatalog } from "./pipeline.js";
 export type { PipelineOptions, PipelineResult } from "./pipeline.js";

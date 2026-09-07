@@ -63,10 +63,21 @@ export async function getPrimaryLocationId(
 // Types
 // ---------------------------------------------------------------------------
 
+export type VariantWriteMapping = {
+  /** Index of the variant in the source product's variants array */
+  sourceVariantIndex: number;
+  /** Shopify variant GID returned from the mutation */
+  shopifyVariantId: string;
+  /** SKU on the Shopify variant after write (may differ from source) */
+  shopifySku: string | null;
+};
+
 export type WriteResult = {
   sourceKey: string;
   success: boolean;
   shopifyProductId?: string;
+  /** Per-variant Shopify IDs, populated on success. Order matches mutation response. */
+  variantMappings?: VariantWriteMapping[];
   errorCode?: string;
   errorMessage?: string;
   imagesAttached: number;
@@ -134,7 +145,16 @@ function buildProductSetInput(product: CatalogProduct, locationId: string | null
   // Build variants in productSet format
   const variants = product.variants.map((v, variantIndex) => {
     const variant: Record<string, unknown> = {};
-    if (v.sku) variant.sku = v.sku;
+
+    // SKU handling per Missing SKU spec:
+    // - Incoming SKU present → use it (regardless of source)
+    // - Incoming SKU missing → omit (Shopify will not assign one on create,
+    //   and productSet won't clear an existing one if the field is absent)
+    // Never silently invent or clear a merchant-managed SKU.
+    if (v.sku && v.sku.trim() !== "") {
+      variant.sku = v.sku.trim();
+    }
+
     if (v.barcode) variant.barcode = v.barcode;
     if (v.price) {
       variant.price = v.price;
@@ -290,7 +310,13 @@ async function writeOneProduct(
 
     const res = await client.query<{
       productSet: {
-        product: { id: string; title: string } | null;
+        product: {
+          id: string;
+          title: string;
+          variants: {
+            edges: Array<{ node: { id: string; sku: string | null } }>;
+          };
+        } | null;
         userErrors: Array<{ field: string[]; message: string; code: string }>;
       };
     }>(
@@ -347,10 +373,19 @@ async function writeOneProduct(
       shopifyProductId: createdProduct.id,
     });
 
+    // Extract variant-level IDs for mapping persistence
+    const variantEdges = createdProduct.variants?.edges ?? [];
+    const variantMappings: VariantWriteMapping[] = variantEdges.map((edge, idx) => ({
+      sourceVariantIndex: idx,
+      shopifyVariantId: edge.node.id,
+      shopifySku: edge.node.sku ?? null,
+    }));
+
     return {
       sourceKey: product.sourceKey,
       success: true,
       shopifyProductId: createdProduct.id,
+      variantMappings,
       imagesAttached: imageCount,
       imagesFailed: product.images.length - imageCount,
     };
