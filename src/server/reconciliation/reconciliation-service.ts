@@ -12,7 +12,7 @@
 import { getPrisma } from "../db.js";
 import { getLogger } from "../logger.js";
 import { ShopifyGraphQLClient } from "../shopify/graphql-client.js";
-import { buildIdentityIndexFromSnapshots, hasReadySnapshot } from "../shopify/catalog-sync.js";
+import { buildIdentityIndexFromSnapshots, hasReadySnapshot, syncShopifyCatalog } from "../shopify/catalog-sync.js";
 import { classifyProducts, type ClassifyProductsInput } from "../../engine/reconciliation/reconciliation-engine.js";
 import { computeProductFingerprint } from "../../engine/reconciliation/product-fingerprint.js";
 import { computeVariantFingerprint } from "../../engine/sku/variant-fingerprint.js";
@@ -82,7 +82,30 @@ export async function runReconciliation(
   // Step 3: Build Shopify identity index from local snapshots
   // Hard invariant: unmapped products must not be classified as NEW_PRODUCT
   // unless StoreDelivery has a valid Shopify catalog snapshot.
-  const snapshotReady = await hasReadySnapshot(shopId);
+  let snapshotReady = await hasReadySnapshot(shopId);
+
+  // Auto-sync: if no sync has ever been done, run one now.
+  // This handles the new-merchant flow — a shop with 0 products syncs
+  // instantly and gets READY status, so the guard passes.
+  if (!snapshotReady) {
+    logger.info("No Shopify snapshot exists — triggering auto-sync before reconciliation", { shopId });
+    try {
+      const syncResult = await syncShopifyCatalog(shopId, client);
+      snapshotReady = syncResult.status === "READY";
+      logger.info("Auto-sync completed", {
+        shopId,
+        status: syncResult.status,
+        productCount: syncResult.productCount,
+        variantCount: syncResult.variantCount,
+      });
+    } catch (err) {
+      logger.error("Auto-sync failed — reconciliation guard will block new product creation", {
+        shopId,
+        error: (err as Error).message,
+      });
+    }
+  }
+
   if (!snapshotReady) {
     logger.warn("No valid Shopify catalog snapshot — new product classification will be blocked", { shopId });
   }
