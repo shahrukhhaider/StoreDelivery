@@ -328,9 +328,39 @@ function buildProduct(
     const opt1 = getRowField("variant.option1");
     const opt2 = getRowField("variant.option2");
     const opt3 = getRowField("variant.option3");
-    if (opt1) options["Option 1"] = normalizeText(opt1);
-    if (opt2) options["Option 2"] = normalizeText(opt2);
-    if (opt3) options["Option 3"] = normalizeText(opt3);
+
+    // Read option names from the mapped columns (e.g. "Color", "Size")
+    // Fall back to "Option 1", "Option 2", "Option 3" if no name column
+    const opt1NameCol = fieldToColumn.get("variant.option1Name") ?? "";
+    const opt2NameCol = fieldToColumn.get("variant.option2Name") ?? "";
+    const opt3NameCol = fieldToColumn.get("variant.option3Name") ?? "";
+
+    // Find the option name from the first row in the group that has it
+    let opt1Name = "Option 1";
+    let opt2Name = "Option 2";
+    let opt3Name = "Option 3";
+    if (opt1NameCol) {
+      for (const ri of rowIndices) {
+        const val = sheet.rows[ri][opt1NameCol]?.trim();
+        if (val) { opt1Name = val; break; }
+      }
+    }
+    if (opt2NameCol) {
+      for (const ri of rowIndices) {
+        const val = sheet.rows[ri][opt2NameCol]?.trim();
+        if (val) { opt2Name = val; break; }
+      }
+    }
+    if (opt3NameCol) {
+      for (const ri of rowIndices) {
+        const val = sheet.rows[ri][opt3NameCol]?.trim();
+        if (val) { opt3Name = val; break; }
+      }
+    }
+
+    if (opt1) options[opt1Name] = normalizeText(opt1);
+    if (opt2) options[opt2Name] = normalizeText(opt2);
+    if (opt3) options[opt3Name] = normalizeText(opt3);
 
     const weightResult = normalizeWeight(getRowField("variant.weight"));
 

@@ -137,10 +137,10 @@ describe("lookupAlias", () => {
       expect(lookupAlias("Option3 Value")).toEqual({ target: "variant.option3" });
     });
 
-    it("maps Option1-3 Name to ignore", () => {
-      expect(lookupAlias("Option1 Name")).toEqual({ target: "ignore" });
-      expect(lookupAlias("Option2 Name")).toEqual({ target: "ignore" });
-      expect(lookupAlias("Option3 Name")).toEqual({ target: "ignore" });
+    it("maps Option1-3 Name to option name targets", () => {
+      expect(lookupAlias("Option1 Name")).toEqual({ target: "variant.option1Name" });
+      expect(lookupAlias("Option2 Name")).toEqual({ target: "variant.option2Name" });
+      expect(lookupAlias("Option3 Name")).toEqual({ target: "variant.option3Name" });
     });
 
     it("maps Shopify metadata columns to ignore", () => {

@@ -205,9 +205,9 @@ export const HEADER_ALIASES: Record<string, TargetField> = {
   "option1 value": "variant.option1",
   "option2 value": "variant.option2",
   "option3 value": "variant.option3",
-  "option1 name": "ignore",
-  "option2 name": "ignore",
-  "option3 name": "ignore",
+  "option1 name": "variant.option1Name",
+  "option2 name": "variant.option2Name",
+  "option3 name": "variant.option3Name",
 
   // --- Shopify columns safe to ignore ---
   "published": "ignore",

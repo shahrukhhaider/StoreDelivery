@@ -404,5 +404,67 @@ describe("groupRows", () => {
       const mug = result.products.find((p) => p.title === "Coffee Mug");
       expect(mug!.variants).toHaveLength(1);
     });
+
+    it("reads real option names from Option1 Name column instead of 'Option 1'", () => {
+      const sheet: ParsedSheet = {
+        headers: ["Handle", "Title", "Option1 Name", "Option1 Value", "Option2 Name", "Option2 Value", "Variant SKU"],
+        rows: [
+          { Handle: "tee", Title: "Classic Tee", "Option1 Name": "Color", "Option1 Value": "Red", "Option2 Name": "Size", "Option2 Value": "S", "Variant SKU": "TEE-RED-S" },
+          { Handle: "tee", Title: "", "Option1 Name": "", "Option1 Value": "Blue", "Option2 Name": "", "Option2 Value": "M", "Variant SKU": "TEE-BLU-M" },
+        ],
+        delimiter: ",",
+        rowCount: 2,
+      };
+
+      const mappings = [
+        mapping("Handle", "grouping.parentKey"),
+        mapping("Title", "product.title"),
+        mapping("Option1 Name", "variant.option1Name"),
+        mapping("Option1 Value", "variant.option1"),
+        mapping("Option2 Name", "variant.option2Name"),
+        mapping("Option2 Value", "variant.option2"),
+        mapping("Variant SKU", "variant.sku"),
+      ];
+
+      const result = groupRows(sheet, mappings);
+      expect(result.products).toHaveLength(1);
+
+      const tee = result.products[0];
+      expect(tee.title).toBe("Classic Tee");
+      expect(tee.variants).toHaveLength(2);
+
+      // Options should use real names "Color" and "Size", not "Option 1" and "Option 2"
+      expect(tee.variants[0].options).toHaveProperty("Color", "Red");
+      expect(tee.variants[0].options).toHaveProperty("Size", "S");
+      expect(tee.variants[1].options).toHaveProperty("Color", "Blue");
+      expect(tee.variants[1].options).toHaveProperty("Size", "M");
+
+      // Should NOT have "Option 1" or "Option 2" keys
+      expect(tee.variants[0].options).not.toHaveProperty("Option 1");
+      expect(tee.variants[0].options).not.toHaveProperty("Option 2");
+    });
+
+    it("falls back to 'Option 1' when no Name column is mapped", () => {
+      const sheet: ParsedSheet = {
+        headers: ["Handle", "Title", "Option1 Value", "Variant SKU"],
+        rows: [
+          { Handle: "hat", Title: "Hat", "Option1 Value": "Red", "Variant SKU": "HAT-R" },
+          { Handle: "hat", Title: "", "Option1 Value": "Blue", "Variant SKU": "HAT-B" },
+        ],
+        delimiter: ",",
+        rowCount: 2,
+      };
+
+      const mappings = [
+        mapping("Handle", "grouping.parentKey"),
+        mapping("Title", "product.title"),
+        mapping("Option1 Value", "variant.option1"),
+        mapping("Variant SKU", "variant.sku"),
+      ];
+
+      const result = groupRows(sheet, mappings);
+      // Without Option1 Name mapped, should use "Option 1" as fallback
+      expect(result.products[0].variants[0].options).toHaveProperty("Option 1", "Red");
+    });
   });
 });
