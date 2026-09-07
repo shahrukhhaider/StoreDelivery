@@ -208,18 +208,24 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
               </Text>
               {issues?.blocking && issues.blocking.length > 0 && (
                 <BlockStack gap="100">
-                  {issues.blocking.slice(0, 10).map((issue, i) => (
-                    <Text as="p" variant="bodySm" key={i}>
-                      • <strong>{issue.code}</strong>
-                      {issue.sourceKey ? ` [${issue.sourceKey}]` : ""}: {issue.message}
-                      {issue.field ? ` (field: ${issue.field})` : ""}
-                    </Text>
-                  ))}
-                  {issues.blocking.length > 10 && (
-                    <Text as="p" variant="bodySm" tone="subdued">
-                      …and {issues.blocking.length - 10} more blocking issues
-                    </Text>
-                  )}
+                  {(() => {
+                    const groups = new Map<string, { message: string; keys: Set<string> }>();
+                    for (const issue of issues.blocking) {
+                      const existing = groups.get(issue.code);
+                      if (existing) {
+                        if (issue.sourceKey) existing.keys.add(issue.sourceKey);
+                      } else {
+                        const keys = new Set<string>();
+                        if (issue.sourceKey) keys.add(issue.sourceKey);
+                        groups.set(issue.code, { message: issue.message, keys });
+                      }
+                    }
+                    return [...groups.entries()].map(([code, { message, keys }]) => (
+                      <Text as="p" variant="bodySm" key={code}>
+                        • <strong>{code}</strong>: {message} — {keys.size} product{keys.size !== 1 ? "s" : ""} affected
+                      </Text>
+                    ));
+                  })()}
                 </BlockStack>
               )}
             </BlockStack>
@@ -227,19 +233,30 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
         )}
 
         {issues && issues.warning && issues.warning.length > 0 && (
-          <Banner title={`${issues.warning.length} warning(s)`} tone="warning">
+          <Banner title="Warnings" tone="warning">
             <BlockStack gap="100">
-              {issues.warning.slice(0, 5).map((issue, i) => (
-                <Text as="p" variant="bodySm" key={i}>
-                  • <strong>{issue.code}</strong>
-                  {issue.sourceKey ? ` [${issue.sourceKey}]` : ""}: {issue.message}
-                </Text>
-              ))}
-              {issues.warning.length > 5 && (
-                <Text as="p" variant="bodySm" tone="subdued">
-                  …and {issues.warning.length - 5} more warnings
-                </Text>
-              )}
+              {(() => {
+                // Group warnings by code and count unique products
+                const groups = new Map<string, { message: string; keys: Set<string> }>();
+                for (const issue of issues.warning) {
+                  const existing = groups.get(issue.code);
+                  if (existing) {
+                    if (issue.sourceKey) existing.keys.add(issue.sourceKey);
+                  } else {
+                    const keys = new Set<string>();
+                    if (issue.sourceKey) keys.add(issue.sourceKey);
+                    groups.set(issue.code, { message: issue.message, keys });
+                  }
+                }
+                return [...groups.entries()].map(([code, { message, keys }]) => (
+                  <Text as="p" variant="bodySm" key={code}>
+                    • <strong>{code}</strong>: {message} — {keys.size} product{keys.size !== 1 ? "s" : ""} affected
+                  </Text>
+                ));
+              })()}
+              <Text as="p" variant="bodySm" tone="subdued">
+                Go back to Edit to resolve these issues before importing.
+              </Text>
             </BlockStack>
           </Banner>
         )}
