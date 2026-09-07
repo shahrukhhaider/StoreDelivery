@@ -4,6 +4,7 @@ export {
 
 export {
   classifyProducts,
+  applySnapshotGuard,
 } from "./reconciliation-engine.js";
 
 export type {

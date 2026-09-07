@@ -13,7 +13,7 @@ import { getPrisma } from "../db.js";
 import { getLogger } from "../logger.js";
 import { ShopifyGraphQLClient } from "../shopify/graphql-client.js";
 import { buildIdentityIndexFromSnapshots, hasReadySnapshot, syncShopifyCatalog } from "../shopify/catalog-sync.js";
-import { classifyProducts, type ClassifyProductsInput } from "../../engine/reconciliation/reconciliation-engine.js";
+import { classifyProducts, applySnapshotGuard, type ClassifyProductsInput } from "../../engine/reconciliation/reconciliation-engine.js";
 import { computeProductFingerprint } from "../../engine/reconciliation/product-fingerprint.js";
 import { computeVariantFingerprint } from "../../engine/sku/variant-fingerprint.js";
 import type { CatalogProduct } from "@shared/types/catalog.js";
@@ -115,51 +115,24 @@ export async function runReconciliation(
     : { skus: new Map(), barcodes: new Map(), titles: new Map() };
 
   // Step 4: Classify via pure engine
-  let { classifications, summary } = classifyProducts({
+  const engineResult = classifyProducts({
     products,
     existingMappings,
     shopifyIndex,
   });
 
-  // Reconciliation guard: if no valid snapshot, downgrade NEW_PRODUCT to NEEDS_REVIEW
-  // An unmapped supplier product must not be classified as NEW_PRODUCT unless
-  // StoreDelivery has a valid Shopify catalog snapshot.
-  if (!snapshotReady) {
-    let downgraded = 0;
-    classifications = classifications.map((c) => {
-      if (c.classification === "NEW_PRODUCT") {
-        downgraded++;
-        return {
-          ...c,
-          classification: "NEEDS_REVIEW" as const,
-          proposedAction: "SKIP" as const,
-          confidence: null,
-          matchEvidence: [{
-            type: "persisted_mapping" as const,
-            sourceValue: "NO_SHOPIFY_SNAPSHOT",
-            confidence: "LOW" as const,
-          }],
-        };
-      }
-      return c;
+  // Step 4b: Apply reconciliation guard
+  // Hard invariant: if no valid snapshot, downgrade NEW_PRODUCT → NEEDS_REVIEW
+  const { classifications, summary, downgraded } = applySnapshotGuard(
+    engineResult.classifications,
+    snapshotReady,
+  );
+
+  if (downgraded > 0) {
+    logger.warn("Downgraded NEW_PRODUCT classifications due to missing snapshot", {
+      downgraded,
+      summary,
     });
-
-    if (downgraded > 0) {
-      // Recompute summary
-      summary = {
-        totalProducts: classifications.length,
-        existingMapped: classifications.filter((c) => c.classification === "EXISTING_MAPPED").length,
-        likelyExisting: classifications.filter((c) => c.classification === "LIKELY_EXISTING").length,
-        newProducts: classifications.filter((c) => c.classification === "NEW_PRODUCT").length,
-        needsReview: classifications.filter((c) => c.classification === "NEEDS_REVIEW").length,
-        noChange: classifications.filter((c) => c.classification === "NO_CHANGE").length,
-      };
-
-      logger.warn("Downgraded NEW_PRODUCT classifications due to missing snapshot", {
-        downgraded,
-        newSummary: summary,
-      });
-    }
   }
 
   // Step 5: Create CatalogRun + RunItems

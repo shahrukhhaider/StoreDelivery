@@ -540,3 +540,158 @@ describe("classifyProducts — index collision scenarios", () => {
     expect(classifications[0].matchedShopifyProductId).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// applySnapshotGuard — pure guard function
+// ---------------------------------------------------------------------------
+
+import { applySnapshotGuard } from "./reconciliation-engine.js";
+
+describe("applySnapshotGuard", () => {
+  // Helper to make a classification
+  function makeClassification(
+    sourceKey: string,
+    classification: "EXISTING_MAPPED" | "LIKELY_EXISTING" | "NEW_PRODUCT" | "NEEDS_REVIEW" | "NO_CHANGE",
+    proposedAction: import("@shared/types/reconciliation.js").ProposedAction = "CREATE_PRODUCT",
+  ): import("@shared/types/reconciliation.js").ProductClassification {
+    return {
+      sourceProductKey: sourceKey,
+      classification,
+      proposedAction,
+      matchedShopifyProductId: classification === "EXISTING_MAPPED" ? "gid://P/1" : null,
+      productMappingId: null,
+      confidence: classification === "EXISTING_MAPPED" ? "HIGH" : null,
+      matchEvidence: [],
+    };
+  }
+
+  describe("when snapshot IS ready (snapshotReady=true)", () => {
+    it("passes all classifications through unchanged", () => {
+      const input = [
+        makeClassification("A", "NEW_PRODUCT"),
+        makeClassification("B", "EXISTING_MAPPED", "NO_CHANGE"),
+        makeClassification("C", "NEW_PRODUCT"),
+      ];
+
+      const { classifications, summary, downgraded } = applySnapshotGuard(input, true);
+
+      expect(downgraded).toBe(0);
+      expect(classifications).toEqual(input);
+      expect(summary.newProducts).toBe(2);
+      expect(summary.existingMapped).toBe(1);
+    });
+
+    it("new merchant with empty Shopify store (synced, 0 products) — all products are NEW_PRODUCT", () => {
+      // This is the critical edge case: merchant has synced their empty store,
+      // snapshot is READY, so NEW_PRODUCT classifications should pass through.
+      const input = [
+        makeClassification("SUPPLIER-1", "NEW_PRODUCT"),
+        makeClassification("SUPPLIER-2", "NEW_PRODUCT"),
+        makeClassification("SUPPLIER-3", "NEW_PRODUCT"),
+      ];
+
+      const { classifications, summary, downgraded } = applySnapshotGuard(input, true);
+
+      expect(downgraded).toBe(0);
+      expect(summary.newProducts).toBe(3);
+      expect(summary.needsReview).toBe(0);
+      // All should still be NEW_PRODUCT — allowed to create
+      expect(classifications.every((c) => c.classification === "NEW_PRODUCT")).toBe(true);
+      expect(classifications.every((c) => c.proposedAction === "CREATE_PRODUCT")).toBe(true);
+    });
+  });
+
+  describe("when snapshot is NOT ready (snapshotReady=false)", () => {
+    it("downgrades all NEW_PRODUCT to NEEDS_REVIEW with SKIP", () => {
+      const input = [
+        makeClassification("A", "NEW_PRODUCT"),
+        makeClassification("B", "NEW_PRODUCT"),
+      ];
+
+      const { classifications, summary, downgraded } = applySnapshotGuard(input, false);
+
+      expect(downgraded).toBe(2);
+      expect(summary.newProducts).toBe(0);
+      expect(summary.needsReview).toBe(2);
+      for (const c of classifications) {
+        expect(c.classification).toBe("NEEDS_REVIEW");
+        expect(c.proposedAction).toBe("SKIP");
+        expect(c.matchEvidence[0].sourceValue).toBe("NO_SHOPIFY_SNAPSHOT");
+      }
+    });
+
+    it("preserves EXISTING_MAPPED classifications (persisted mappings are trusted)", () => {
+      const input = [
+        makeClassification("MAPPED-1", "EXISTING_MAPPED", "NO_CHANGE"),
+        makeClassification("NEW-1", "NEW_PRODUCT"),
+      ];
+
+      const { classifications, summary, downgraded } = applySnapshotGuard(input, false);
+
+      expect(downgraded).toBe(1); // only NEW-1 downgraded
+      expect(summary.existingMapped).toBe(1);
+      expect(summary.needsReview).toBe(1);
+
+      const mapped = classifications.find((c) => c.sourceProductKey === "MAPPED-1")!;
+      expect(mapped.classification).toBe("EXISTING_MAPPED");
+      expect(mapped.proposedAction).toBe("NO_CHANGE");
+    });
+
+    it("preserves LIKELY_EXISTING and NEEDS_REVIEW (already non-creation)", () => {
+      const input = [
+        makeClassification("LIKELY-1", "LIKELY_EXISTING", "LINK_EXISTING_PRODUCT"),
+        makeClassification("REVIEW-1", "NEEDS_REVIEW", "SKIP"),
+        makeClassification("NEW-1", "NEW_PRODUCT"),
+      ];
+
+      const { classifications, downgraded } = applySnapshotGuard(input, false);
+
+      expect(downgraded).toBe(1); // only NEW-1
+      const likely = classifications.find((c) => c.sourceProductKey === "LIKELY-1")!;
+      const review = classifications.find((c) => c.sourceProductKey === "REVIEW-1")!;
+      expect(likely.classification).toBe("LIKELY_EXISTING");
+      expect(review.classification).toBe("NEEDS_REVIEW");
+    });
+
+    it("returns downgraded=0 when there are no NEW_PRODUCT classifications", () => {
+      const input = [
+        makeClassification("MAPPED-1", "EXISTING_MAPPED", "NO_CHANGE"),
+      ];
+
+      const { downgraded } = applySnapshotGuard(input, false);
+      expect(downgraded).toBe(0);
+    });
+
+    it("handles empty classifications list", () => {
+      const { classifications, summary, downgraded } = applySnapshotGuard([], false);
+
+      expect(classifications).toHaveLength(0);
+      expect(downgraded).toBe(0);
+      expect(summary.totalProducts).toBe(0);
+    });
+  });
+
+  describe("summary computation", () => {
+    it("computes correct summary after guard is applied", () => {
+      const input = [
+        makeClassification("M1", "EXISTING_MAPPED", "NO_CHANGE"),
+        makeClassification("M2", "EXISTING_MAPPED", "NO_CHANGE"),
+        makeClassification("L1", "LIKELY_EXISTING", "LINK_EXISTING_PRODUCT"),
+        makeClassification("N1", "NEW_PRODUCT"),
+        makeClassification("N2", "NEW_PRODUCT"),
+        makeClassification("N3", "NEW_PRODUCT"),
+        makeClassification("R1", "NEEDS_REVIEW", "SKIP"),
+      ];
+
+      const { summary, downgraded } = applySnapshotGuard(input, false);
+
+      expect(downgraded).toBe(3);
+      expect(summary.totalProducts).toBe(7);
+      expect(summary.existingMapped).toBe(2);
+      expect(summary.likelyExisting).toBe(1);
+      expect(summary.newProducts).toBe(0); // all 3 downgraded
+      expect(summary.needsReview).toBe(4); // 3 downgraded + 1 original
+      expect(summary.noChange).toBe(0);
+    });
+  });
+});

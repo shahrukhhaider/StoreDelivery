@@ -270,3 +270,67 @@ function computeConfidence(
 
   return "LOW";
 }
+
+// ---------------------------------------------------------------------------
+// Reconciliation guard — pure function for snapshot enforcement
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply the reconciliation guard: downgrade NEW_PRODUCT to NEEDS_REVIEW
+ * when no valid Shopify catalog snapshot exists.
+ *
+ * Hard invariant: an unmapped supplier product must not be classified as
+ * NEW_PRODUCT unless StoreDelivery has a valid Shopify catalog snapshot.
+ *
+ * This is a pure function — no DB access. The caller determines whether
+ * the snapshot is ready and passes that as a boolean.
+ */
+export function applySnapshotGuard(
+  classifications: ProductClassification[],
+  snapshotReady: boolean,
+): { classifications: ProductClassification[]; summary: ReconciliationSummary; downgraded: number } {
+  if (snapshotReady) {
+    // No guard needed — return as-is with computed summary
+    return {
+      classifications,
+      summary: computeSummary(classifications),
+      downgraded: 0,
+    };
+  }
+
+  let downgraded = 0;
+  const guarded = classifications.map((c) => {
+    if (c.classification === "NEW_PRODUCT") {
+      downgraded++;
+      return {
+        ...c,
+        classification: "NEEDS_REVIEW" as const,
+        proposedAction: "SKIP" as const,
+        confidence: null,
+        matchEvidence: [{
+          type: "persisted_mapping" as const,
+          sourceValue: "NO_SHOPIFY_SNAPSHOT",
+          confidence: "LOW" as const,
+        }],
+      };
+    }
+    return c;
+  });
+
+  return {
+    classifications: guarded,
+    summary: computeSummary(guarded),
+    downgraded,
+  };
+}
+
+function computeSummary(classifications: ProductClassification[]): ReconciliationSummary {
+  return {
+    totalProducts: classifications.length,
+    existingMapped: classifications.filter((c) => c.classification === "EXISTING_MAPPED").length,
+    likelyExisting: classifications.filter((c) => c.classification === "LIKELY_EXISTING").length,
+    newProducts: classifications.filter((c) => c.classification === "NEW_PRODUCT").length,
+    needsReview: classifications.filter((c) => c.classification === "NEEDS_REVIEW").length,
+    noChange: classifications.filter((c) => c.classification === "NO_CHANGE").length,
+  };
+}
