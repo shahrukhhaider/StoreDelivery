@@ -7,6 +7,10 @@ export {
   applySnapshotGuard,
 } from "./reconciliation-engine.js";
 
+export {
+  computeProductDiff,
+} from "./diff-engine.js";
+
 export type {
   ClassifyProductsInput,
 } from "./reconciliation-engine.js";

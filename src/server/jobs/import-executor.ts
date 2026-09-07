@@ -109,9 +109,9 @@ export async function executeImport(operationId: string): Promise<void> {
       catalogRunId: reconciliation.catalogRunId,
     });
 
-    // Determine which products to import vs skip based on classification
-    // NEW_PRODUCT → create, EXISTING_MAPPED → skip (no update in V1),
-    // LIKELY_EXISTING with HIGH confidence → skip (auto-linked),
+    // Determine which products to import vs skip vs update based on classification
+    // NEW_PRODUCT → create, UPDATE_REVIEW → update (deferred to merchant review),
+    // EXISTING_MAPPED/NO_CHANGE → skip, LIKELY_EXISTING → skip,
     // NEEDS_REVIEW → skip (hold for merchant)
     const toCreateKeys = new Set<string>();
     const toSkipKeys = new Set<string>();
@@ -120,7 +120,9 @@ export async function executeImport(operationId: string): Promise<void> {
       if (c.classification === "NEW_PRODUCT") {
         toCreateKeys.add(c.sourceProductKey);
       } else {
-        // EXISTING_MAPPED, LIKELY_EXISTING, NEEDS_REVIEW, NO_CHANGE → skip
+        // EXISTING_MAPPED, LIKELY_EXISTING, NEEDS_REVIEW, NO_CHANGE, UPDATE_REVIEW → skip
+        // UPDATE_REVIEW products are handled via the separate update review API,
+        // not during the initial import execution.
         toSkipKeys.add(c.sourceProductKey);
       }
     }

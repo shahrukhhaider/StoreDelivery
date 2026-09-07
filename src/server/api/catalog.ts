@@ -830,4 +830,330 @@ router.post("/:id/reconciliation/confirm", async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/catalogs/:id/reconciliation/updates — Diffs for UPDATE_REVIEW products.
+ */
+router.get("/:id/reconciliation/updates", async (req, res, next) => {
+  try {
+    const prisma = getPrisma();
+    const shopId = getShopId(req);
+
+    const catalog = await prisma.catalog.findFirst({
+      where: { id: req.params.id, shopId },
+    });
+    if (!catalog) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+
+    // Find the latest CatalogRun
+    const latestRun = await prisma.catalogRun.findFirst({
+      where: { catalogId: catalog.id, shopId },
+      orderBy: { startedAt: "desc" },
+      include: {
+        items: {
+          where: { classification: "UPDATE_REVIEW" },
+          orderBy: { sourceProductKey: "asc" },
+        },
+      },
+    });
+
+    if (!latestRun) {
+      res.json({ catalogId: catalog.id, hasRun: false, totalWithChanges: 0, products: [] });
+      return;
+    }
+
+    // Load diffs by re-computing from snapshots and supplier data
+    const { computeProductDiff } = await import("../../engine/reconciliation/diff-engine.js");
+
+    const updateItems = latestRun.items;
+    const diffs = [];
+
+    for (const item of updateItems) {
+      if (!item.matchedShopifyId) continue;
+
+      // Load snapshot
+      const snapshot = await prisma.shopifyProductSnapshot.findFirst({
+        where: { shopId, shopifyProductId: item.matchedShopifyId },
+        include: { variants: true },
+      });
+      if (!snapshot) continue;
+
+      // Load supplier product
+      const dbProduct = await prisma.catalogProduct.findFirst({
+        where: { catalogId: catalog.id, sourceKey: item.sourceProductKey },
+      });
+      if (!dbProduct) continue;
+
+      const supplierProduct = dbProduct.normalizedJson as unknown as import("../../shared/types/catalog.js").CatalogProduct;
+
+      // Load variant mappings
+      const productMapping = item.productMappingId
+        ? await prisma.productMapping.findUnique({
+            where: { id: item.productMappingId },
+            include: { variantMappings: true },
+          })
+        : null;
+
+      const variantMappings = (productMapping?.variantMappings ?? []).map((v) => ({
+        id: v.id,
+        sourceVariantKey: v.sourceVariantKey,
+        sourceVariantFingerprint: v.sourceVariantFingerprint,
+        shopifyVariantId: v.shopifyVariantId,
+        sourceSku: v.sourceSku,
+        barcode: v.barcode,
+        shopifySku: v.shopifySku,
+        skuSource: v.skuSource,
+      }));
+
+      const diff = computeProductDiff(
+        supplierProduct,
+        {
+          shopifyProductId: snapshot.shopifyProductId,
+          title: snapshot.title,
+          handle: snapshot.handle,
+          vendor: snapshot.vendor,
+          status: snapshot.status,
+        },
+        snapshot.variants.map((v) => ({
+          shopifyVariantId: v.shopifyVariantId,
+          shopifyProductId: v.shopifyProductId,
+          sku: v.sku,
+          barcode: v.barcode,
+          option1: v.option1,
+          option2: v.option2,
+          option3: v.option3,
+        })),
+        variantMappings,
+      );
+
+      if (diff.hasChanges) {
+        diffs.push(diff);
+      }
+    }
+
+    res.json({
+      catalogId: catalog.id,
+      catalogRunId: latestRun.id,
+      totalWithChanges: diffs.length,
+      products: diffs,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/catalogs/:id/reconciliation/updates/apply — Apply selected field changes.
+ */
+router.post("/:id/reconciliation/updates/apply", async (req, res, next) => {
+  try {
+    const prisma = getPrisma();
+    const shopId = getShopId(req);
+    const logger = getLogger();
+
+    const catalog = await prisma.catalog.findFirst({
+      where: { id: req.params.id, shopId },
+      include: { upload: true },
+    });
+    if (!catalog) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+
+    const selections = req.body?.selections as Array<{
+      sourceProductKey: string;
+      fields: Array<{ field: string; variantIndex?: number; selected: boolean }>;
+    }> | undefined;
+
+    if (!selections || !Array.isArray(selections) || selections.length === 0) {
+      res.status(400).json({ error: "INVALID_INPUT", message: "selections array required" });
+      return;
+    }
+
+    // Find latest run
+    const latestRun = await prisma.catalogRun.findFirst({
+      where: { catalogId: catalog.id, shopId },
+      orderBy: { startedAt: "desc" },
+    });
+    if (!latestRun) {
+      res.status(400).json({ error: "NO_RUN" });
+      return;
+    }
+
+    // Get Shopify client
+    const shop = await prisma.shop.findFirst({ where: { id: shopId } });
+    if (!shop) { res.status(404).json({ error: "SHOP_NOT_FOUND" }); return; }
+
+    const { getAccessToken } = await import("../shopify/auth.js");
+    const { ShopifyGraphQLClient } = await import("../shopify/graphql-client.js");
+    const { applyProductUpdate } = await import("../shopify/update-writer.js");
+    const { computeProductDiff } = await import("../../engine/reconciliation/diff-engine.js");
+
+    const accessToken = await getAccessToken(shop.shopDomain);
+    if (!accessToken) {
+      res.status(401).json({ error: "NO_ACCESS_TOKEN" });
+      return;
+    }
+
+    const client = new ShopifyGraphQLClient({ shopDomain: shop.shopDomain, accessToken });
+
+    let applied = 0;
+    let failed = 0;
+    const results: Array<{ sourceProductKey: string; success: boolean; fieldsApplied: number; error?: string }> = [];
+
+    for (const sel of selections) {
+      // Find the run item
+      const runItem = await prisma.runItem.findFirst({
+        where: {
+          catalogRunId: latestRun.id,
+          sourceProductKey: sel.sourceProductKey,
+          classification: "UPDATE_REVIEW",
+        },
+      });
+      if (!runItem || !runItem.matchedShopifyId) {
+        results.push({ sourceProductKey: sel.sourceProductKey, success: false, fieldsApplied: 0, error: "NOT_FOUND" });
+        failed++;
+        continue;
+      }
+
+      // Load snapshot + supplier product to build full diff
+      const snapshot = await prisma.shopifyProductSnapshot.findFirst({
+        where: { shopId, shopifyProductId: runItem.matchedShopifyId },
+        include: { variants: true },
+      });
+      const dbProduct = await prisma.catalogProduct.findFirst({
+        where: { catalogId: catalog.id, sourceKey: sel.sourceProductKey },
+      });
+
+      if (!snapshot || !dbProduct) {
+        results.push({ sourceProductKey: sel.sourceProductKey, success: false, fieldsApplied: 0, error: "SNAPSHOT_MISSING" });
+        failed++;
+        continue;
+      }
+
+      const supplierProduct = dbProduct.normalizedJson as unknown as import("../../shared/types/catalog.js").CatalogProduct;
+
+      // Load variant mappings
+      const productMapping = runItem.productMappingId
+        ? await prisma.productMapping.findUnique({
+            where: { id: runItem.productMappingId },
+            include: { variantMappings: true },
+          })
+        : null;
+
+      const variantMappings = (productMapping?.variantMappings ?? []).map((v) => ({
+        id: v.id,
+        sourceVariantKey: v.sourceVariantKey,
+        sourceVariantFingerprint: v.sourceVariantFingerprint,
+        shopifyVariantId: v.shopifyVariantId,
+        sourceSku: v.sourceSku,
+        barcode: v.barcode,
+        shopifySku: v.shopifySku,
+        skuSource: v.skuSource,
+      }));
+
+      // Compute diff and apply merchant selections
+      const diff = computeProductDiff(
+        supplierProduct,
+        {
+          shopifyProductId: snapshot.shopifyProductId,
+          title: snapshot.title,
+          handle: snapshot.handle,
+          vendor: snapshot.vendor,
+          status: snapshot.status,
+        },
+        snapshot.variants.map((v) => ({
+          shopifyVariantId: v.shopifyVariantId,
+          shopifyProductId: v.shopifyProductId,
+          sku: v.sku,
+          barcode: v.barcode,
+          option1: v.option1,
+          option2: v.option2,
+          option3: v.option3,
+        })),
+        variantMappings,
+      );
+
+      // Apply merchant selections to the diff
+      const selectedFields = new Set(
+        sel.fields.filter((f) => f.selected).map((f) => f.field),
+      );
+      const deselectedFields = new Set(
+        sel.fields.filter((f) => !f.selected).map((f) => f.field),
+      );
+
+      const productChanges = diff.productChanges.map((c) => ({
+        ...c,
+        selected: selectedFields.has(c.field) || (!deselectedFields.has(c.field) && c.selected),
+      }));
+      const variantChanges = diff.variantChanges.map((v) => ({
+        ...v,
+        changes: v.changes.map((c) => ({
+          ...c,
+          selected: selectedFields.has(`variants.${c.field}`) || selectedFields.has(c.field) ||
+            (!deselectedFields.has(`variants.${c.field}`) && !deselectedFields.has(c.field) && c.selected),
+        })),
+      }));
+
+      // Apply update
+      const updateResult = await applyProductUpdate(client, {
+        shopifyProductId: runItem.matchedShopifyId,
+        sourceProductKey: sel.sourceProductKey,
+        productChanges,
+        variantChanges,
+      });
+
+      // Persist selection for audit
+      await prisma.updateSelection.upsert({
+        where: {
+          catalogRunId_sourceProductKey: {
+            catalogRunId: latestRun.id,
+            sourceProductKey: sel.sourceProductKey,
+          },
+        },
+        create: {
+          catalogRunId: latestRun.id,
+          sourceProductKey: sel.sourceProductKey,
+          shopifyProductId: runItem.matchedShopifyId,
+          selectedFields: sel.fields as never,
+          status: updateResult.success ? "APPLIED" : "FAILED",
+          errorMessage: updateResult.errorMessage ?? null,
+          appliedAt: updateResult.success ? new Date() : null,
+        },
+        update: {
+          selectedFields: sel.fields as never,
+          status: updateResult.success ? "APPLIED" : "FAILED",
+          errorMessage: updateResult.errorMessage ?? null,
+          appliedAt: updateResult.success ? new Date() : null,
+        },
+      });
+
+      if (updateResult.success) {
+        applied++;
+      } else {
+        failed++;
+      }
+
+      results.push({
+        sourceProductKey: sel.sourceProductKey,
+        success: updateResult.success,
+        fieldsApplied: updateResult.fieldsApplied,
+        error: updateResult.errorMessage,
+      });
+    }
+
+    logger.info("Update review applied", {
+      catalogId: catalog.id,
+      applied,
+      failed,
+      total: selections.length,
+    });
+
+    res.json({ applied, failed, total: selections.length, results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as catalogRouter };

@@ -15,6 +15,7 @@ import { ShopifyGraphQLClient } from "../shopify/graphql-client.js";
 import { buildIdentityIndexFromSnapshots, hasReadySnapshot, syncShopifyCatalog } from "../shopify/catalog-sync.js";
 import { classifyProducts, applySnapshotGuard, type ClassifyProductsInput } from "../../engine/reconciliation/reconciliation-engine.js";
 import { computeProductFingerprint } from "../../engine/reconciliation/product-fingerprint.js";
+import { computeProductDiff } from "../../engine/reconciliation/diff-engine.js";
 import { computeVariantFingerprint } from "../../engine/sku/variant-fingerprint.js";
 import type { CatalogProduct } from "@shared/types/catalog.js";
 import type {
@@ -22,6 +23,7 @@ import type {
   ReconciliationSummary,
   PersistedProductMapping,
   ShopifyIdentityIndex,
+  ProductDiff,
 } from "@shared/types/reconciliation.js";
 import type { WriteResult } from "../shopify/writer.js";
 
@@ -34,6 +36,8 @@ export type ReconciliationResult = {
   supplierProfileId: string;
   classifications: ProductClassification[];
   summary: ReconciliationSummary;
+  /** Product diffs for UPDATE_REVIEW items (empty for non-update runs) */
+  diffs: ProductDiff[];
 };
 
 // ---------------------------------------------------------------------------
@@ -135,7 +139,105 @@ export async function runReconciliation(
     });
   }
 
-  // Step 5: Create CatalogRun + RunItems
+  // Step 5: Compute diffs for EXISTING_MAPPED products → split into UPDATE_REVIEW vs NO_CHANGE
+  const diffs: ProductDiff[] = [];
+  let finalClassifications = classifications;
+  let finalSummary = summary;
+
+  const mappedClassifications = classifications.filter(
+    (c) => c.classification === "EXISTING_MAPPED" && c.matchedShopifyProductId,
+  );
+
+  if (mappedClassifications.length > 0 && snapshotReady) {
+    // Load snapshots for mapped Shopify products
+    const shopifyProductIds = mappedClassifications
+      .map((c) => c.matchedShopifyProductId!)
+      .filter(Boolean);
+
+    const snapshots = await prisma.shopifyProductSnapshot.findMany({
+      where: {
+        shopId,
+        shopifyProductId: { in: shopifyProductIds },
+      },
+      include: {
+        variants: true,
+      },
+    });
+
+    const snapshotByProductId = new Map(
+      snapshots.map((s) => [s.shopifyProductId, s]),
+    );
+
+    // Build a product lookup for supplier data
+    const productByKey = new Map(products.map((p) => [p.sourceKey, p]));
+
+    // Compute diffs and reclassify
+    finalClassifications = classifications.map((c) => {
+      if (c.classification !== "EXISTING_MAPPED" || !c.matchedShopifyProductId) return c;
+
+      const snapshot = snapshotByProductId.get(c.matchedShopifyProductId);
+      const supplierProduct = productByKey.get(c.sourceProductKey);
+      if (!snapshot || !supplierProduct) return c;
+
+      // Load variant mappings for this product
+      const productMapping = existingMappings.get(c.sourceProductKey);
+      const variantMappings = productMapping?.variants ?? [];
+
+      const diff = computeProductDiff(
+        supplierProduct,
+        {
+          shopifyProductId: snapshot.shopifyProductId,
+          title: snapshot.title,
+          handle: snapshot.handle,
+          vendor: snapshot.vendor,
+          status: snapshot.status,
+        },
+        snapshot.variants.map((v) => ({
+          shopifyVariantId: v.shopifyVariantId,
+          shopifyProductId: v.shopifyProductId,
+          sku: v.sku,
+          barcode: v.barcode,
+          option1: v.option1,
+          option2: v.option2,
+          option3: v.option3,
+        })),
+        variantMappings,
+      );
+
+      if (diff.hasChanges) {
+        diffs.push(diff);
+        return {
+          ...c,
+          classification: "UPDATE_REVIEW" as const,
+          proposedAction: "UPDATE_PRODUCT" as const,
+        };
+      }
+
+      return {
+        ...c,
+        classification: "NO_CHANGE" as const,
+        proposedAction: "NO_CHANGE" as const,
+      };
+    });
+
+    // Recompute summary after reclassification
+    finalSummary = {
+      totalProducts: finalClassifications.length,
+      existingMapped: finalClassifications.filter((c) => c.classification === "EXISTING_MAPPED").length,
+      likelyExisting: finalClassifications.filter((c) => c.classification === "LIKELY_EXISTING").length,
+      newProducts: finalClassifications.filter((c) => c.classification === "NEW_PRODUCT").length,
+      needsReview: finalClassifications.filter((c) => c.classification === "NEEDS_REVIEW").length,
+      noChange: finalClassifications.filter((c) => c.classification === "NO_CHANGE").length,
+    };
+
+    logger.info("Diff computation complete", {
+      mapped: mappedClassifications.length,
+      updateReview: diffs.length,
+      noChange: mappedClassifications.length - diffs.length,
+    });
+  }
+
+  // Step 6: Create CatalogRun + RunItems
   const catalogRun = await prisma.catalogRun.create({
     data: {
       supplierProfileId: profile.id,
@@ -143,19 +245,19 @@ export async function runReconciliation(
       catalogId,
       schemaFingerprint,
       status: "COMPLETED",
-      totalProducts: summary.totalProducts,
-      mappedCount: summary.existingMapped,
-      matchedCount: summary.likelyExisting,
-      newCount: summary.newProducts,
-      reviewCount: summary.needsReview,
+      totalProducts: finalSummary.totalProducts,
+      mappedCount: finalSummary.existingMapped,
+      matchedCount: finalSummary.likelyExisting,
+      newCount: finalSummary.newProducts,
+      reviewCount: finalSummary.needsReview,
       completedAt: new Date(),
     },
   });
 
   // Batch-insert run items
-  if (classifications.length > 0) {
+  if (finalClassifications.length > 0) {
     await prisma.runItem.createMany({
-      data: classifications.map((c) => ({
+      data: finalClassifications.map((c) => ({
         catalogRunId: catalogRun.id,
         sourceProductKey: c.sourceProductKey,
         classification: c.classification as never,
@@ -169,8 +271,8 @@ export async function runReconciliation(
   }
 
   // Update lastSeenAt for mapped products
-  const mappedKeys = classifications
-    .filter((c) => c.classification === "EXISTING_MAPPED" && c.productMappingId)
+  const mappedKeys = finalClassifications
+    .filter((c) => (c.classification === "EXISTING_MAPPED" || c.classification === "UPDATE_REVIEW" || c.classification === "NO_CHANGE") && c.productMappingId)
     .map((c) => c.productMappingId!);
 
   if (mappedKeys.length > 0) {
@@ -188,8 +290,9 @@ export async function runReconciliation(
   return {
     catalogRunId: catalogRun.id,
     supplierProfileId: profile.id,
-    classifications,
-    summary,
+    classifications: finalClassifications,
+    summary: finalSummary,
+    diffs,
   };
 }
 

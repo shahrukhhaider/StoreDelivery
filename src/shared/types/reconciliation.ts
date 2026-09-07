@@ -27,6 +27,7 @@ export type ReconciliationClassification =
   | "LIKELY_EXISTING"  // strong Shopify match found (bootstrap)
   | "NEW_PRODUCT"      // no match — candidate for creation
   | "NEEDS_REVIEW"     // ambiguous or low-confidence match
+  | "UPDATE_REVIEW"    // mapped product with field-level changes
   | "NO_CHANGE";       // re-upload of identical data
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ export type ReconciliationClassification =
 export type ProposedAction =
   | "CREATE_PRODUCT"
   | "CREATE_VARIANT"
+  | "UPDATE_PRODUCT"
   | "LINK_EXISTING_PRODUCT"
   | "LINK_EXISTING_VARIANT"
   | "NO_CHANGE"
@@ -132,4 +134,57 @@ export type ShopifyIdentityIndex = {
   barcodes: Map<string, Array<{ productId: string; variantId: string }>>;
   /** lowercase title → shopifyProductId */
   titles: Map<string, string>;
+};
+
+// ---------------------------------------------------------------------------
+// Field-level diff (for update review)
+// ---------------------------------------------------------------------------
+
+/** A single field change detected between supplier data and Shopify. */
+export type FieldChange = {
+  field: string;
+  shopifyValue: string | null;
+  supplierValue: string | null;
+  /** Whether the merchant has selected this change for application. Default: true */
+  selected: boolean;
+};
+
+/** Diff for a single variant within a product. */
+export type VariantDiff = {
+  sourceVariantKey: string;
+  shopifyVariantId: string | null;
+  changes: FieldChange[];
+};
+
+/** Full diff for a product: product-level + variant-level changes. */
+export type ProductDiff = {
+  sourceProductKey: string;
+  shopifyProductId: string;
+  hasChanges: boolean;
+  productChanges: FieldChange[];
+  variantChanges: VariantDiff[];
+};
+
+// ---------------------------------------------------------------------------
+// Shopify snapshot types (for diff engine input — no Prisma dependency)
+// ---------------------------------------------------------------------------
+
+/** Product snapshot fields needed for diff computation. */
+export type SnapshotProduct = {
+  shopifyProductId: string;
+  title: string;
+  handle: string | null;
+  vendor: string | null;
+  status: string | null;
+};
+
+/** Variant snapshot fields needed for diff computation. */
+export type SnapshotVariant = {
+  shopifyVariantId: string;
+  shopifyProductId: string;
+  sku: string | null;
+  barcode: string | null;
+  option1: string | null;
+  option2: string | null;
+  option3: string | null;
 };

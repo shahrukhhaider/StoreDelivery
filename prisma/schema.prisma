@@ -445,12 +445,14 @@ enum ReconciliationClassification {
   LIKELY_EXISTING
   NEW_PRODUCT
   NEEDS_REVIEW
+  UPDATE_REVIEW
   NO_CHANGE
 }
 
 enum ProposedActionEnum {
   CREATE_PRODUCT
   CREATE_VARIANT
+  UPDATE_PRODUCT
   LINK_EXISTING_PRODUCT
   LINK_EXISTING_VARIANT
   NO_CHANGE
@@ -556,4 +558,31 @@ model ShopifyVariantSnapshot {
   @@index([sku])
   @@index([barcode])
   @@map("shopify_variant_snapshots")
+}
+
+// ---------------------------------------------------------------------------
+// Update Selections — merchant's per-field update choices
+// ---------------------------------------------------------------------------
+
+enum UpdateSelectionStatus {
+  PENDING
+  APPLIED
+  FAILED
+  SKIPPED
+}
+
+model UpdateSelection {
+  id                String                @id @default(cuid())
+  catalogRunId      String                @map("catalog_run_id")
+  sourceProductKey  String                @map("source_product_key")
+  shopifyProductId  String                @map("shopify_product_id")
+  selectedFields    Json                  @map("selected_fields")
+  status            UpdateSelectionStatus @default(PENDING)
+  errorMessage      String?               @map("error_message")
+  appliedAt         DateTime?             @map("applied_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+
+  @@unique([catalogRunId, sourceProductKey])
+  @@index([catalogRunId])
+  @@map("update_selections")
 }
