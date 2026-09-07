@@ -423,7 +423,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   return (
     <Page
       title="Edit Catalog"
-      subtitle={`${total} products · ${overrideStats.totalOverrides} edits`}
+      subtitle={`${total} products${overrideStats.productsWithOverrides > 0 ? ` · ${overrideStats.productsWithOverrides} edited` : ""}`}
       backAction={{ onAction: onBack }}
       primaryAction={{
         content: readyCount > 0 ? `Import ${readyCount} products` : "No products to import",
@@ -432,7 +432,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       }}
       secondaryActions={
         hasEdits ? [{
-          content: `Reset all edits (${overrideStats.totalOverrides})`,
+          content: `Reset all edits (${overrideStats.productsWithOverrides} products)`,
           onAction: handleResetAll,
           loading: resetting,
           destructive: true,
@@ -466,10 +466,10 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
                 </Text>
                 <Text as="p" variant="bodySm" tone="subdued">ready</Text>
               </BlockStack>
-              {overrideStats.totalOverrides > 0 && (
+              {overrideStats.productsWithOverrides > 0 && (
                 <BlockStack gap="100">
-                  <Text as="p" variant="headingLg" tone="subdued">{overrideStats.totalOverrides}</Text>
-                  <Text as="p" variant="bodySm" tone="subdued">edits</Text>
+                  <Text as="p" variant="headingLg" tone="subdued">{overrideStats.productsWithOverrides}</Text>
+                  <Text as="p" variant="bodySm" tone="subdued">edited</Text>
                 </BlockStack>
               )}
             </InlineStack>

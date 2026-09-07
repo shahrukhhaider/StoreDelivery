@@ -60,7 +60,7 @@ describe("shop ID extraction", () => {
     const rawShopId = "my-store";
     const normalized = rawShopId.includes(".myshopify.com")
       ? rawShopId
-      : rawShopId === "dev_shop"
+      : (rawShopId as string) === "dev_shop"
         ? "dev.myshopify.com"
         : `${rawShopId}.myshopify.com`;
     expect(normalized).toBe("my-store.myshopify.com");
