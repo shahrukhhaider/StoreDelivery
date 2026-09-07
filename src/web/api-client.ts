@@ -485,8 +485,14 @@ export async function getEditPreview(
   catalogId: string,
   page = 1,
   pageSize = 20,
+  filters?: { severity?: string; issueType?: string },
 ): Promise<EditPreviewResponse> {
-  return request(`/catalogs/${catalogId}/edit/preview?page=${page}&pageSize=${pageSize}`);
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  if (filters?.severity) params.set("severity", filters.severity);
+  if (filters?.issueType) params.set("issueType", filters.issueType);
+  return request(`/catalogs/${catalogId}/edit/preview?${params.toString()}`);
 }
 
 // Undo

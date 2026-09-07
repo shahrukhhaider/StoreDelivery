@@ -225,31 +225,23 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       else if (selectedTab.id === "warning") issueOpts.severity = "warning";
       else if (selectedTab.id !== "all") issueOpts.type = selectedTab.id;
 
+      // Build preview filters to match the tab
+      const previewFilters: { severity?: string; issueType?: string } = {};
+      if (selectedTab.id === "blocking") previewFilters.severity = "blocking";
+      else if (selectedTab.id === "warning") previewFilters.severity = "warning";
+      else if (selectedTab.id !== "all") previewFilters.issueType = selectedTab.id;
+
       const [issueRes, previewRes] = await Promise.all([
         getEditIssues(catalogId, issueOpts),
-        getEditPreview(catalogId, p),
+        getEditPreview(catalogId, p, 20, selectedTab.id === "all" ? undefined : previewFilters),
       ]);
 
       setSummary(issueRes.summary);
       setIssues(issueRes.issues);
       setTypeCounts(issueRes.typeCounts);
-
-      // Filter products to match the active tab
-      let filteredProducts = previewRes.products;
-
-      if (selectedTab.id !== "all") {
-        // Get source keys of products that have matching issues
-        const affectedKeys = new Set(
-          issueRes.issues.map((i: EditIssue) => i.sourceKey).filter(Boolean),
-        );
-        filteredProducts = previewRes.products.filter(
-          (p: PreviewProduct) => affectedKeys.has(p.sourceKey),
-        );
-      }
-
-      setProducts(filteredProducts);
+      setProducts(previewRes.products);
       setTotalPages(previewRes.totalPages);
-      setTotal(filteredProducts.length);
+      setTotal(previewRes.total);
       setOverrideStats(previewRes.overrideStats);
     } catch {
       // handle error silently

@@ -454,6 +454,8 @@ router.get("/:id/edit/preview", async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 20));
     const resolvedOnly = req.query.resolved === "true";
+    const issueSeverity = req.query.severity as string | undefined;
+    const issueType = req.query.issueType as string | undefined;
 
     const resolvedProducts = products.map((p) => {
       const source = p.normalizedJson as unknown as CatalogProduct;
@@ -471,12 +473,26 @@ router.get("/:id/edit/preview", async (req, res, next) => {
       };
     });
 
-    // Validate resolved products
+    // Validate resolved products to get per-product issues
     const allResolved = resolvedProducts.map((p) => p.resolved);
     const validation = validateCatalog(allResolved);
 
-    const total = resolvedProducts.length;
-    const paginated = resolvedProducts.slice((page - 1) * pageSize, page * pageSize);
+    // If filtering by issue severity or type, only return matching products
+    let filtered = resolvedProducts;
+    if (issueSeverity || issueType) {
+      const matchingKeys = new Set<string>();
+      for (const issue of validation.issues) {
+        const sevMatch = !issueSeverity || issue.severity === issueSeverity;
+        const typeMatch = !issueType || classifyIssueType(issue.code) === issueType;
+        if (sevMatch && typeMatch && issue.sourceKey) {
+          matchingKeys.add(issue.sourceKey);
+        }
+      }
+      filtered = resolvedProducts.filter((p) => matchingKeys.has(p.sourceKey));
+    }
+
+    const total = filtered.length;
+    const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
     res.json({
       catalogId: catalog.id,
