@@ -31,6 +31,16 @@ type Props = {
   onBack: () => void;
 };
 
+function formatElapsed(ms: number): string {
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  if (min < 60) return `${min}m ${remSec}s`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h ${min % 60}m`;
+}
+
 export function ResultsPage({ operationId, onBack }: Props) {
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const [items, setItems] = useState<ImportItemEntry[]>([]);
@@ -204,6 +214,24 @@ export function ResultsPage({ operationId, onBack }: Props) {
         {/* Progress / Summary */}
         <Card>
           <BlockStack gap="300">
+            {/* File info */}
+            {status?.fileName && (
+              <InlineStack gap="400">
+                <Text as="p" variant="bodyMd" fontWeight="semibold">
+                  {status.fileName}
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  {status.fileFormat?.toUpperCase()}
+                </Text>
+                {status.uploadedAt && (
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    Uploaded {new Date(status.uploadedAt).toLocaleDateString()}{" "}
+                    {new Date(status.uploadedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </Text>
+                )}
+              </InlineStack>
+            )}
+
             {isRunning && (
               <>
                 <Text as="h3" variant="headingSm">
@@ -219,6 +247,7 @@ export function ResultsPage({ operationId, onBack }: Props) {
               </Text>
             )}
 
+            {/* Counts */}
             <InlineStack gap="600">
               <BlockStack gap="100">
                 <Text as="p" variant="headingLg" tone="success">
@@ -244,6 +273,25 @@ export function ResultsPage({ operationId, onBack }: Props) {
                   skipped
                 </Text>
               </BlockStack>
+            </InlineStack>
+
+            {/* Timing info */}
+            <InlineStack gap="400">
+              {status?.createdAt && (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Started: {new Date(status.createdAt).toLocaleString()}
+                </Text>
+              )}
+              {status?.completedAt && (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Completed: {new Date(status.completedAt).toLocaleString()}
+                </Text>
+              )}
+              {status?.elapsedMs !== undefined && (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Duration: {formatElapsed(status.elapsedMs)}
+                </Text>
+              )}
             </InlineStack>
           </BlockStack>
         </Card>

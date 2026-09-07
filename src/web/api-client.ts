@@ -276,13 +276,18 @@ export async function getPlan(catalogId: string): Promise<PlanResponse> {
 export type ImportStatus = {
   id: string;
   status: string;
+  fileName?: string;
+  fileFormat?: string;
+  catalogId?: string;
   plannedCount: number;
   successCount: number;
   failedCount: number;
   skippedCount: number;
   progress: number;
+  elapsedMs?: number;
   createdAt?: string;
   completedAt?: string | null;
+  uploadedAt?: string;
 };
 
 export async function executeImport(operationId: string): Promise<{ id: string; status: string }> {

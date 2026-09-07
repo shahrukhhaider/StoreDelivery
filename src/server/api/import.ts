@@ -67,6 +67,13 @@ router.get("/:operationId", async (req, res, next) => {
 
     const operation = await prisma.importOperation.findFirst({
       where: { id: req.params.operationId, shopId },
+      include: {
+        catalog: {
+          include: {
+            upload: { select: { fileName: true, format: true, createdAt: true } },
+          },
+        },
+      },
     });
 
     if (!operation) {
@@ -78,16 +85,26 @@ router.get("/:operationId", async (req, res, next) => {
     const completed = operation.successCount + operation.failedCount + operation.skippedCount;
     const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
+    // Calculate elapsed + ETA
+    const startMs = operation.createdAt.getTime();
+    const endMs = operation.completedAt ? operation.completedAt.getTime() : Date.now();
+    const elapsedMs = endMs - startMs;
+
     res.json({
       id: operation.id,
       status: operation.status,
+      fileName: operation.catalog.upload.fileName,
+      fileFormat: operation.catalog.upload.format,
+      catalogId: operation.catalogId,
       plannedCount: operation.plannedCount,
       successCount: operation.successCount,
       failedCount: operation.failedCount,
       skippedCount: operation.skippedCount,
       progress,
+      elapsedMs,
       createdAt: operation.createdAt,
       completedAt: operation.completedAt,
+      uploadedAt: operation.catalog.upload.createdAt,
     });
   } catch (err) {
     next(err);
