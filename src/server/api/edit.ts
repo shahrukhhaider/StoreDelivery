@@ -690,22 +690,55 @@ router.post("/:id/edit/similar", async (req, res, next) => {
     const affectedKeys = [...new Set(matchingIssues.map((i) => i.sourceKey).filter(Boolean))] as string[];
 
     // Build suggested fix based on issue type
-    let suggestedFix: { field: string; value: string; explanation: string } | null = null;
+    let suggestedFix: { field: string; value: string; explanation: string; pattern?: string } | null = null;
 
-    if (body.issueCode === "MISSING_TITLE" || body.issueCode === "MISSING_SKU") {
-      // Can't auto-suggest for missing values without more context
-      suggestedFix = null;
+    if (body.issueCode === "MISSING_SKU") {
+      // Suggest prefix-based unique SKUs using sourceKey
+      const sampleKey = affectedKeys[0] ?? "PRODUCT";
+      suggestedFix = {
+        field: "variants[0].sku",
+        value: `${sampleKey}-001`,
+        explanation: `Generate unique SKUs using the product handle as prefix. Each product gets {handle}-001, {handle}-002, etc.`,
+        pattern: "{sourceKey}-{index}",
+      };
+    } else if (body.issueCode === "MISSING_TITLE") {
+      // Suggest using vendor + product type or sourceKey as title
+      const firstAffected = resolvedProducts.find((p) => p.sourceKey === affectedKeys[0]);
+      const vendor = firstAffected?.resolved?.vendor ?? "";
+      const type = firstAffected?.resolved?.productType ?? "";
+      const suggestedTitle = vendor && type ? `${vendor} ${type}` : affectedKeys[0] ?? "Untitled";
+      suggestedFix = {
+        field: "title",
+        value: suggestedTitle,
+        explanation: vendor && type
+          ? `Use "{vendor} {product type}" as the product title.`
+          : `Use the product handle as the title. Edit to customize.`,
+      };
     } else if (body.issueCode === "SUSPICIOUS_HIGH_PRICE" || body.issueCode === "SUSPICIOUS_LOW_PRICE") {
+      const firstAffected = resolvedProducts.find((p) => p.sourceKey === affectedKeys[0]);
+      const currentPrice = firstAffected?.resolved?.variants?.[0]?.price ?? "";
       suggestedFix = {
         field: "variants[0].price",
-        value: "",
-        explanation: "Review and correct the price manually.",
+        value: currentPrice,
+        explanation: `Current price is ${currentPrice}. Edit to correct it.`,
       };
     } else if (body.issueCode === "INVALID_IMAGE_URL") {
       suggestedFix = {
         field: "images",
         value: "",
         explanation: "Fix or remove invalid image URLs.",
+      };
+    } else if (body.issueCode === "MALFORMED_PRICE") {
+      suggestedFix = {
+        field: "variants[0].price",
+        value: "",
+        explanation: "Enter a valid price (e.g. 24.99).",
+      };
+    } else if (body.issueCode === "EMPTY_OPTION") {
+      suggestedFix = {
+        field: "variants[0].options",
+        value: "Default",
+        explanation: "Set a value for the empty option.",
       };
     }
 

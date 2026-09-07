@@ -1,8 +1,8 @@
 /**
  * Issue Side Panel — guided issue resolution.
  *
- * Shows issue context, affected product count, detected related fields,
- * and a suggested fix with Accept / Edit / Apply to All / Skip actions.
+ * Always actionable: shows edit field + suggested value + bulk apply.
+ * For MISSING_SKU: generates unique SKUs with prefix pattern.
  */
 
 import React, { useState, useCallback } from "react";
@@ -17,20 +17,17 @@ import {
   Divider,
   Banner,
   Spinner,
+  Select,
 } from "@shopify/polaris";
-import { editProduct, bulkEdit, type EditIssue } from "../api-client.js";
+import { bulkEdit, type EditIssue, type SimilarIssuesResponse } from "../api-client.js";
 
 type Props = {
   issue: EditIssue;
   catalogId: string;
-  /** How many products share this same issue */
   similarCount: number;
-  /** Source keys of products with the same issue */
   similarKeys: string[];
-  /** Detected related fields from the product (e.g. "Wholesale: 14.00, MSRP: 29.99") */
   detectedFields?: Array<{ label: string; value: string }>;
-  /** Suggested fix */
-  suggestedFix?: { field: string; value: string; explanation: string };
+  suggestedFix?: { field: string; value: string; explanation: string; pattern?: string };
   onClose: () => void;
   onResolved: () => void;
 };
@@ -46,24 +43,29 @@ export function IssueSidePanel({
   onResolved,
 }: Props) {
   const [editValue, setEditValue] = useState(suggestedFix?.value ?? "");
+  const [editField, setEditField] = useState(suggestedFix?.field ?? guessField(issue));
   const [applying, setApplying] = useState(false);
   const [applyingAll, setApplyingAll] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Accept suggested fix for the single affected product
-  const handleAccept = useCallback(async () => {
-    if (!issue.sourceKey || !suggestedFix) return;
+  const isSkuPattern = suggestedFix?.pattern === "{sourceKey}-{index}";
+
+  // Apply to single product
+  const handleApply = useCallback(async () => {
+    if (!issue.sourceKey) return;
     setApplying(true);
     setResult(null);
     try {
-      // Find the product ID — we use sourceKey match via bulk with single key
-      await bulkEdit(
-        catalogId,
-        "set_value",
-        suggestedFix.field,
-        editValue,
-        { sourceKeys: [issue.sourceKey] },
-      );
+      if (isSkuPattern) {
+        // For SKU pattern: apply {sourceKey}-001 for this single product
+        await bulkEdit(catalogId, "set_value", editField, `${issue.sourceKey}-001`, {
+          sourceKeys: [issue.sourceKey],
+        });
+      } else {
+        await bulkEdit(catalogId, "set_value", editField, editValue, {
+          sourceKeys: [issue.sourceKey],
+        });
+      }
       setResult({ success: true, message: "Fix applied." });
       onResolved();
     } catch (err) {
@@ -71,32 +73,41 @@ export function IssueSidePanel({
     } finally {
       setApplying(false);
     }
-  }, [catalogId, issue.sourceKey, suggestedFix, editValue, onResolved]);
+  }, [catalogId, issue.sourceKey, editField, editValue, isSkuPattern, onResolved]);
 
-  // Apply fix to all similar products
+  // Apply to all similar products
   const handleApplyToAll = useCallback(async () => {
-    if (!suggestedFix) return;
     setApplyingAll(true);
     setResult(null);
     try {
-      const res = await bulkEdit(
-        catalogId,
-        "set_value",
-        suggestedFix.field,
-        editValue,
-        { sourceKeys: similarKeys },
-      );
-      setResult({
-        success: true,
-        message: `Applied to ${res.affected} product(s).${res.invalid > 0 ? ` ${res.invalid} would become invalid and were skipped.` : ""}`,
-      });
+      if (isSkuPattern) {
+        // For SKU pattern: apply {sourceKey}-001 per product (need individual calls)
+        let applied = 0;
+        for (let i = 0; i < similarKeys.length; i++) {
+          const key = similarKeys[i];
+          const sku = `${key}-001`;
+          await bulkEdit(catalogId, "set_value", editField, sku, {
+            sourceKeys: [key],
+          });
+          applied++;
+        }
+        setResult({ success: true, message: `Applied unique SKUs to ${applied} product(s).` });
+      } else {
+        const res = await bulkEdit(catalogId, "set_value", editField, editValue, {
+          sourceKeys: similarKeys,
+        });
+        setResult({
+          success: true,
+          message: `Applied to ${res.affected} product(s).${res.invalid > 0 ? ` ${res.invalid} skipped (would become invalid).` : ""}`,
+        });
+      }
       onResolved();
     } catch (err) {
       setResult({ success: false, message: (err as Error).message });
     } finally {
       setApplyingAll(false);
     }
-  }, [catalogId, suggestedFix, editValue, similarKeys, onResolved]);
+  }, [catalogId, editField, editValue, similarKeys, isSkuPattern, onResolved]);
 
   function severityBadge(severity: string) {
     switch (severity) {
@@ -118,7 +129,6 @@ export function IssueSidePanel({
           <Button variant="plain" onClick={onClose}>✕</Button>
         </InlineStack>
 
-        {/* Issue description */}
         <Text as="p" variant="bodyMd">{issue.message}</Text>
 
         {issue.sourceKey && (
@@ -127,14 +137,13 @@ export function IssueSidePanel({
           </Text>
         )}
 
-        {/* Affected count */}
         <Text as="p" variant="bodySm">
-          <strong>{similarCount}</strong> product(s) affected
+          <strong>{String(similarCount)}</strong> product(s) affected
         </Text>
 
         <Divider />
 
-        {/* Detected related fields */}
+        {/* Detected fields context */}
         {detectedFields && detectedFields.length > 0 && (
           <BlockStack gap="200">
             <Text as="h4" variant="headingSm">Detected fields</Text>
@@ -144,66 +153,71 @@ export function IssueSidePanel({
                 <Text as="span" variant="bodySm" fontWeight="semibold">{f.value}</Text>
               </InlineStack>
             ))}
+            <Divider />
           </BlockStack>
         )}
 
-        {/* Suggested fix */}
-        {suggestedFix && (
-          <>
-            <Divider />
-            <BlockStack gap="200">
-              <Text as="h4" variant="headingSm">Suggested fix</Text>
-              <Text as="p" variant="bodySm" tone="subdued">
-                {suggestedFix.explanation}
-              </Text>
+        {/* Edit section — always shown */}
+        <BlockStack gap="300">
+          <Text as="h4" variant="headingSm">
+            {suggestedFix ? "Suggested fix" : "Fix this issue"}
+          </Text>
 
-              <TextField
-                label={`Set ${suggestedFix.field}`}
-                value={editValue}
-                onChange={setEditValue}
-                autoComplete="off"
-              />
-
-              <InlineStack gap="200">
-                <Button
-                  variant="primary"
-                  onClick={handleAccept}
-                  loading={applying}
-                  disabled={!editValue}
-                >
-                  Accept
-                </Button>
-
-                {similarCount > 1 && (
-                  <Button
-                    onClick={handleApplyToAll}
-                    loading={applyingAll}
-                    disabled={!editValue}
-                  >
-                    Apply to all {String(similarCount)}
-                  </Button>
-                )}
-
-                <Button variant="plain" onClick={onClose}>
-                  Skip
-                </Button>
-              </InlineStack>
-            </BlockStack>
-          </>
-        )}
-
-        {/* No suggestion — just show skip */}
-        {!suggestedFix && (
-          <>
-            <Divider />
+          {suggestedFix?.explanation && (
             <Text as="p" variant="bodySm" tone="subdued">
-              No automatic fix available. Edit the product directly in the grid above.
+              {suggestedFix.explanation}
             </Text>
-            <Button variant="plain" onClick={onClose}>Close</Button>
-          </>
-        )}
+          )}
 
-        {/* Result */}
+          {/* SKU pattern mode */}
+          {isSkuPattern ? (
+            <BlockStack gap="200">
+              <Text as="p" variant="bodySm">
+                Each product will get a unique SKU: <strong>{"{handle}"}-001</strong>
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Example: {similarKeys[0] ?? "product"}-001, {similarKeys[1] ?? "product2"}-001, …
+              </Text>
+            </BlockStack>
+          ) : (
+            /* Regular edit mode */
+            <TextField
+              label={`Set ${editField}`}
+              value={editValue}
+              onChange={setEditValue}
+              autoComplete="off"
+              placeholder={suggestedFix?.value || "Enter value..."}
+            />
+          )}
+
+          {/* Action buttons */}
+          <InlineStack gap="200">
+            <Button
+              variant="primary"
+              onClick={handleApply}
+              loading={applying}
+              disabled={!isSkuPattern && !editValue}
+            >
+              {issue.sourceKey ? "Apply to this product" : "Apply"}
+            </Button>
+
+            {similarCount > 1 && (
+              <Button
+                onClick={handleApplyToAll}
+                loading={applyingAll}
+                disabled={!isSkuPattern && !editValue}
+              >
+                Apply to all {String(similarCount)}
+              </Button>
+            )}
+
+            <Button variant="plain" onClick={onClose}>
+              Skip
+            </Button>
+          </InlineStack>
+        </BlockStack>
+
+        {/* Result banner */}
         {result && (
           <Banner
             title={result.success ? "Fix applied" : "Error"}
@@ -215,4 +229,18 @@ export function IssueSidePanel({
       </BlockStack>
     </Card>
   );
+}
+
+/**
+ * Guess which field to edit based on the issue type.
+ */
+function guessField(issue: EditIssue): string {
+  if (issue.code.includes("SKU")) return "variants[0].sku";
+  if (issue.code.includes("TITLE")) return "title";
+  if (issue.code.includes("PRICE")) return "variants[0].price";
+  if (issue.code.includes("BARCODE")) return "variants[0].barcode";
+  if (issue.code.includes("IMAGE")) return "images";
+  if (issue.code.includes("VENDOR")) return "vendor";
+  if (issue.field) return issue.field;
+  return "title";
 }

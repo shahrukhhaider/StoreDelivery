@@ -513,7 +513,7 @@ export type SimilarIssuesResponse = {
   issueCode: string;
   affectedCount: number;
   affectedKeys: string[];
-  suggestedFix: { field: string; value: string; explanation: string } | null;
+  suggestedFix: { field: string; value: string; explanation: string; pattern?: string } | null;
   detectedFields: Array<{ label: string; value: string }>;
 };
 
