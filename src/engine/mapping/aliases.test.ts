@@ -136,6 +136,21 @@ describe("lookupAlias", () => {
       expect(lookupAlias("Option2 Value")).toEqual({ target: "variant.option2" });
       expect(lookupAlias("Option3 Value")).toEqual({ target: "variant.option3" });
     });
+
+    it("maps Option1-3 Name to ignore", () => {
+      expect(lookupAlias("Option1 Name")).toEqual({ target: "ignore" });
+      expect(lookupAlias("Option2 Name")).toEqual({ target: "ignore" });
+      expect(lookupAlias("Option3 Name")).toEqual({ target: "ignore" });
+    });
+
+    it("maps Shopify metadata columns to ignore", () => {
+      expect(lookupAlias("Published")).toEqual({ target: "ignore" });
+      expect(lookupAlias("Variant Inventory Tracker")).toEqual({ target: "ignore" });
+      expect(lookupAlias("Variant Taxable")).toEqual({ target: "ignore" });
+      expect(lookupAlias("Gift Card")).toEqual({ target: "ignore" });
+      expect(lookupAlias("SEO Title")).toEqual({ target: "ignore" });
+      expect(lookupAlias("Google Shopping / Gender")).toEqual({ target: "ignore" });
+    });
   });
 
   // --- German aliases ---
