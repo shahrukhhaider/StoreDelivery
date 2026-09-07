@@ -43,7 +43,7 @@ export function WelcomePage({ onStart }: Props) {
           How it works
         </Text>
 
-        <InlineStack gap="400" align="start" wrap>
+        <BlockStack gap="400">
           <Card>
             <BlockStack gap="200">
               <Text as="h3" variant="headingMd">
@@ -82,7 +82,7 @@ export function WelcomePage({ onStart }: Props) {
               </Text>
             </BlockStack>
           </Card>
-        </InlineStack>
+        </BlockStack>
 
         <Card>
           <BlockStack gap="200">
