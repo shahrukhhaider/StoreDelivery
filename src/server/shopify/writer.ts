@@ -128,28 +128,32 @@ function buildProductSetInput(product: CatalogProduct, locationId: string | null
       variant.price = v.price;
     }
     if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
-    if (v.weight !== undefined) {
-      variant.weight = v.weight;
-      variant.weightUnit = (v.weightUnit ?? "lb").toUpperCase() === "KG"
-        ? "KILOGRAMS"
-        : "POUNDS";
-    }
 
-    // Options as optionValues for productSet
+    // Options: optionValues must not be null — always provide at least one
     const optionEntries = Object.entries(v.options).filter(([, val]) => Boolean(val));
     if (optionEntries.length > 0) {
       variant.optionValues = optionEntries.map(([name, value]) => ({
         name,
         value,
       }));
+    } else {
+      // Default option so Shopify doesn't reject the variant
+      variant.optionValues = [{ name: "Title", value: "Default Title" }];
     }
 
     return variant;
   });
 
+  // Build product options from variant data
+  const productOptions = buildProductOptions(product);
+  // Ensure at least one option exists
+  if (productOptions.length === 0) {
+    productOptions.push({ name: "Title", values: [{ name: "Default Title" }] });
+  }
+
   const productSet: Record<string, unknown> = {
     title: product.title || "Untitled Product",
-    productOptions: buildProductOptions(product),
+    productOptions,
     variants,
   };
 
@@ -158,16 +162,16 @@ function buildProductSetInput(product: CatalogProduct, locationId: string | null
   if (product.productType) productSet.productType = product.productType;
   if (product.tags.length > 0) productSet.tags = product.tags;
 
-  // Media (images)
-  const media = product.images
+  // Files (images) — productSet uses "files" not "media"
+  const files = product.images
     .filter((img) => img.sourceUrl.startsWith("http"))
     .map((img) => ({
       originalSource: img.sourceUrl,
       alt: img.altText ?? "",
-      mediaContentType: "IMAGE",
+      contentType: "IMAGE",
     }));
-  if (media.length > 0) {
-    productSet.media = media;
+  if (files.length > 0) {
+    productSet.files = files;
   }
 
   return { productSet };
