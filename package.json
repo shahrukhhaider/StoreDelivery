@@ -16,7 +16,7 @@
     "build:server": "tsc -p tsconfig.server.json && tsc-alias -p tsconfig.server.json",
     "build:client": "vite build",
     "start": "node dist/server/index.js",
-    "postinstall": "prisma generate",
+    "postinstall": "npx prisma generate",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -25,10 +25,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio"
+    "db:generate": "npx prisma generate",
+    "db:migrate": "npx prisma migrate dev",
+    "db:push": "npx prisma db push",
+    "db:studio": "npx prisma studio"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
