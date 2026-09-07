@@ -555,26 +555,13 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
           </InlineStack>
         )}
 
-        {/* Issue Details — clickable to open side panel */}
+        {/* Issue Details — with Review button to open sidebar */}
         {issues.length > 0 && (
           <Card>
             <BlockStack gap="200">
-              <Text as="h3" variant="headingSm">
-                Issues {selectedIssue ? "" : "(click to resolve)"}
-              </Text>
+              <Text as="h3" variant="headingSm">Issues</Text>
               {issues.slice(0, 20).map((issue, i) => (
-                <div
-                  key={i}
-                  onClick={() => handleIssueClick(issue)}
-                  style={{
-                    cursor: "pointer",
-                    padding: "8px",
-                    borderRadius: "4px",
-                    background: selectedIssue?.code === issue.code && selectedIssue?.sourceKey === issue.sourceKey
-                      ? "var(--p-color-bg-surface-selected)"
-                      : undefined,
-                  }}
-                >
+                <InlineStack key={i} gap="200" align="space-between">
                   <InlineStack gap="200" align="start">
                     {severityBadge(issue.severity)}
                     <Text as="span" variant="bodySm">
@@ -583,7 +570,10 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
                       : {issue.message}
                     </Text>
                   </InlineStack>
-                </div>
+                  <Button size="slim" onClick={() => handleIssueClick(issue)}>
+                    Review
+                  </Button>
+                </InlineStack>
               ))}
               {issues.length > 20 && (
                 <Text as="p" variant="bodySm" tone="subdued">
@@ -593,32 +583,61 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
             </BlockStack>
           </Card>
         )}
-
-        {/* Issue Side Panel */}
-        {selectedIssue && (
-          <div style={{ marginTop: "16px" }}>
-            {loadingSimilar ? (
-              <Card>
-                <InlineStack align="center" gap="200">
-                  <Spinner size="small" />
-                  <Text as="p">Finding similar issues...</Text>
-                </InlineStack>
-              </Card>
-            ) : (
-              <IssueSidePanel
-                issue={selectedIssue}
-                catalogId={catalogId}
-                similarCount={similarData?.affectedCount ?? 1}
-                similarKeys={similarData?.affectedKeys ?? (selectedIssue.sourceKey ? [selectedIssue.sourceKey] : [])}
-                detectedFields={similarData?.detectedFields}
-                suggestedFix={similarData?.suggestedFix ?? undefined}
-                onClose={handleSidePanelClose}
-                onResolved={handleSidePanelResolved}
-              />
-            )}
-          </div>
-        )}
       </BlockStack>
+
+      {/* Right sidebar overlay for issue resolution */}
+      {selectedIssue && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            right: 0,
+            width: "420px",
+            height: "100vh",
+            background: "var(--p-color-bg-surface)",
+            boxShadow: "-4px 0 24px rgba(0,0,0,0.15)",
+            zIndex: 1000,
+            overflowY: "auto",
+            padding: "20px",
+          }}
+        >
+          {loadingSimilar ? (
+            <Card>
+              <InlineStack align="center" gap="200">
+                <Spinner size="small" />
+                <Text as="p">Finding similar issues...</Text>
+              </InlineStack>
+            </Card>
+          ) : (
+            <IssueSidePanel
+              issue={selectedIssue}
+              catalogId={catalogId}
+              similarCount={similarData?.affectedCount ?? 1}
+              similarKeys={similarData?.affectedKeys ?? (selectedIssue.sourceKey ? [selectedIssue.sourceKey] : [])}
+              detectedFields={similarData?.detectedFields}
+              suggestedFix={similarData?.suggestedFix ?? undefined}
+              onClose={handleSidePanelClose}
+              onResolved={handleSidePanelResolved}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Backdrop when sidebar is open */}
+      {selectedIssue && (
+        <div
+          onClick={handleSidePanelClose}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(0,0,0,0.3)",
+            zIndex: 999,
+          }}
+        />
+      )}
 
       {/* Bulk Edit Modal */}
       <Modal
