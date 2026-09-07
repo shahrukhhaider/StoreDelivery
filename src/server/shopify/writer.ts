@@ -119,6 +119,18 @@ const PRODUCT_SET_MUTATION = `
 function buildProductSetInput(product: CatalogProduct, locationId: string | null): {
   productSet: Record<string, unknown>;
 } {
+  // First, determine product options from ALL variant data
+  const productOptions = buildProductOptions(product);
+
+  // Determine the canonical option names
+  const optionNames = productOptions.map((o) => o.name);
+
+  // If no options at all, use "Title" as default
+  if (optionNames.length === 0) {
+    optionNames.push("Title");
+    productOptions.push({ name: "Title", values: [{ name: "Default Title" }] });
+  }
+
   // Build variants in productSet format
   const variants = product.variants.map((v) => {
     const variant: Record<string, unknown> = {};
@@ -129,27 +141,23 @@ function buildProductSetInput(product: CatalogProduct, locationId: string | null
     }
     if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
 
-    // Options: optionValues must not be null — always provide at least one
-    const optionEntries = Object.entries(v.options).filter(([, val]) => Boolean(val));
-    if (optionEntries.length > 0) {
-      variant.optionValues = optionEntries.map(([optionName, value]) => ({
-        optionName,
-        name: value,
-      }));
-    } else {
-      // Default option so Shopify doesn't reject the variant
-      variant.optionValues = [{ optionName: "Title", name: "Default Title" }];
-    }
+    // Build optionValues aligned with product's declared options
+    const optionValues = optionNames.map((optName) => {
+      // Try to find a value for this option from the variant
+      const val = v.options[optName];
+      if (val) {
+        return { optionName: optName, name: val };
+      }
+      // Fallback: use "Default Title" for "Title" option, or "Default" for others
+      return {
+        optionName: optName,
+        name: optName === "Title" ? "Default Title" : "Default",
+      };
+    });
 
+    variant.optionValues = optionValues;
     return variant;
   });
-
-  // Build product options from variant data
-  const productOptions = buildProductOptions(product);
-  // Ensure at least one option exists
-  if (productOptions.length === 0) {
-    productOptions.push({ name: "Title", values: [{ name: "Default Title" }] });
-  }
 
   const productSet: Record<string, unknown> = {
     title: product.title || "Untitled Product",
@@ -194,10 +202,17 @@ function buildProductOptions(product: CatalogProduct): Array<{ name: string; val
 
   if (optionMap.size === 0) return [];
 
-  return Array.from(optionMap.entries()).map(([name, values]) => ({
-    name,
-    values: Array.from(values).map((v) => ({ name: v })),
-  }));
+  return Array.from(optionMap.entries()).map(([name, values]) => {
+    const valueList = Array.from(values).map((v) => ({ name: v }));
+    // Add "Default" if some variants don't have this option
+    const hasVariantWithout = product.variants.some(
+      (v) => !v.options[name],
+    );
+    if (hasVariantWithout) {
+      valueList.push({ name: name === "Title" ? "Default Title" : "Default" });
+    }
+    return { name, values: valueList };
+  });
 }
 
 // ---------------------------------------------------------------------------
