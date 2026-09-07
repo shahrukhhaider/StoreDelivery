@@ -67,9 +67,28 @@ export async function executeImport(operationId: string): Promise<void> {
       },
     });
 
-    const catalogProducts: CatalogProduct[] = dbProducts.map(
-      (p) => p.normalizedJson as unknown as CatalogProduct,
-    );
+    // Load overrides and apply to get resolved products (final state)
+    const overrides = await prisma.catalogOverride.findMany({
+      where: { catalogId: operation.catalogId },
+    });
+    const overridesByProduct = new Map<string, Array<{ field: string; oldValue: unknown; newValue: unknown; source: string }>>();
+    for (const o of overrides) {
+      const list = overridesByProduct.get(o.productId) ?? [];
+      list.push({ field: o.field, oldValue: o.oldValue, newValue: o.newValue, source: o.source });
+      overridesByProduct.set(o.productId, list);
+    }
+
+    const { applyOverrides } = await import("../../engine/overrides/merge.js");
+    const catalogProducts: CatalogProduct[] = dbProducts.map((p) => {
+      const source = p.normalizedJson as unknown as CatalogProduct;
+      const productOverrides = (overridesByProduct.get(p.id) ?? []).map((o) => ({
+        field: o.field,
+        oldValue: o.oldValue,
+        newValue: o.newValue,
+        source: o.source as "user" | "bulk_rule" | "auto_fix",
+      }));
+      return applyOverrides(source, productOverrides);
+    });
 
     // Duplicate detection
     logger.info("Running duplicate detection", { productCount: catalogProducts.length });
@@ -187,6 +206,37 @@ export async function executeImport(operationId: string): Promise<void> {
         completedAt: new Date(),
       },
     });
+
+    // Create import snapshot (permanent record for future rollback)
+    const allOverrides = await prisma.catalogOverride.findMany({
+      where: { catalogId: operation.catalogId },
+    });
+    if (allOverrides.length > 0) {
+      await prisma.importSnapshot.create({
+        data: {
+          importOperationId: operationId,
+          catalogId: operation.catalogId,
+          appliedOverrides: allOverrides.map((o) => ({
+            productId: o.productId,
+            field: o.field,
+            oldValue: o.oldValue,
+            newValue: o.newValue,
+            source: o.source,
+          })),
+          resolvedProductCount: toImport.length,
+        },
+      });
+
+      // Clean up temporary overrides (edits are now snapshotted)
+      await prisma.catalogOverride.deleteMany({
+        where: { catalogId: operation.catalogId },
+      });
+
+      logger.info("Import snapshot created, overrides cleaned up", {
+        operationId,
+        overrideCount: allOverrides.length,
+      });
+    }
 
     logger.info("Import execution complete", {
       operationId,
