@@ -52,10 +52,6 @@ const FILTER_TABS = [
   { id: "all", content: "All" },
   { id: "blocking", content: "Blocking" },
   { id: "warning", content: "Warnings" },
-  { id: "missing_value", content: "Missing Field" },
-  { id: "duplicate", content: "Duplicate" },
-  { id: "invalid_value", content: "Invalid Value" },
-  { id: "image", content: "Image" },
 ];
 
 // ---------------------------------------------------------------------------
