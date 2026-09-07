@@ -93,11 +93,11 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
 
   if (loading && !catalog) {
     return (
-      <Page title="Catalog Preview">
+      <Page title="Catalog Update Review">
         <Card>
           <InlineStack align="center" gap="200">
             <Spinner size="small" />
-            <Text as="p">Loading preview...</Text>
+            <Text as="p">Loading review...</Text>
           </InlineStack>
         </Card>
       </Page>
@@ -139,7 +139,7 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
 
   return (
     <Page
-      title="Catalog Preview"
+      title="Catalog Update Review"
       subtitle={catalog?.fileName}
       backAction={{ onAction: onBack }}
       primaryAction={{
