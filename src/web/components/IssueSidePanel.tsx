@@ -128,7 +128,6 @@ export function IssueSidePanel({
             {severityBadge(issue.severity)}
             <Text as="h3" variant="headingSm">{issue.code}</Text>
           </InlineStack>
-          <Button variant="plain" onClick={onClose}>✕</Button>
         </InlineStack>
 
         <Text as="p" variant="bodyMd">{issue.message}</Text>

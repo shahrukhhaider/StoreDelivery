@@ -195,8 +195,8 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   const [resetting, setResetting] = useState(false);
 
   // Side panel state
-  const [selectedIssue, setSelectedIssue] = useState<EditIssue | null>(null);
-  const [similarData, setSimilarData] = useState<SimilarIssuesResponse | null>(null);
+  const [selectedProductIssues, setSelectedProductIssues] = useState<EditIssue[]>([]);
+  const [similarDataMap, setSimilarDataMap] = useState<Map<string, SimilarIssuesResponse>>(new Map());
   const [loadingSimilar, setLoadingSimilar] = useState(false);
 
   // -------------------------------------------------------------------------
@@ -293,13 +293,20 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   // Issue side panel
   // -------------------------------------------------------------------------
 
-  const handleIssueClick = useCallback(async (issue: EditIssue) => {
-    setSelectedIssue(issue);
+  const handleIssueClick = useCallback(async (productIssues: EditIssue[]) => {
+    setSelectedProductIssues(productIssues);
     setLoadingSimilar(true);
-    setSimilarData(null);
+    setSimilarDataMap(new Map());
     try {
-      const data = await findSimilarIssues(catalogId, issue.code, issue.field ?? undefined);
-      setSimilarData(data);
+      const newMap = new Map<string, SimilarIssuesResponse>();
+      const seenCodes = new Set<string>();
+      for (const issue of productIssues) {
+        if (seenCodes.has(issue.code)) continue;
+        seenCodes.add(issue.code);
+        const data = await findSimilarIssues(catalogId, issue.code, issue.field ?? undefined);
+        newMap.set(issue.code, data);
+      }
+      setSimilarDataMap(newMap);
     } catch {
       // silent
     } finally {
@@ -308,14 +315,13 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   }, [catalogId]);
 
   const handleSidePanelClose = useCallback(() => {
-    setSelectedIssue(null);
-    setSimilarData(null);
+    setSelectedProductIssues([]);
+    setSimilarDataMap(new Map());
   }, []);
 
   const handleSidePanelResolved = useCallback(() => {
-    // Close the sidebar and reload data so counts, review buttons, and grid all update
-    setSelectedIssue(null);
-    setSimilarData(null);
+    setSelectedProductIssues([]);
+    setSimilarDataMap(new Map());
     reload();
   }, [reload]);
 
@@ -338,6 +344,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
 
   const readyCount = total - (summary?.blocking ?? 0);
   const hasEdits = overrideStats.totalOverrides > 0;
+  const sidebarOpen = selectedProductIssues.length > 0;
 
   // Tab content with counts
   const tabs = FILTER_TABS.map((tab) => {
@@ -369,7 +376,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
             <Button
               size="slim"
               tone={productIssues.some((i) => i.severity === "blocking") ? "critical" : undefined}
-              onClick={() => handleIssueClick(productIssues[0])}
+              onClick={() => handleIssueClick(productIssues)}
             >
               Review
             </Button>
@@ -535,8 +542,8 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
 
       </BlockStack>
 
-      {/* Right sidebar overlay for issue resolution */}
-      {selectedIssue && (
+      {/* Right sidebar overlay — shows ALL issues for the selected product */}
+      {sidebarOpen && (
         <div
           style={{
             position: "fixed",
@@ -559,22 +566,38 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
               </InlineStack>
             </Card>
           ) : (
-            <IssueSidePanel
-              issue={selectedIssue}
-              catalogId={catalogId}
-              similarCount={similarData?.affectedCount ?? 1}
-              similarKeys={similarData?.affectedKeys ?? (selectedIssue.sourceKey ? [selectedIssue.sourceKey] : [])}
-              detectedFields={similarData?.detectedFields}
-              suggestedFix={similarData?.suggestedFix ?? undefined}
-              onClose={handleSidePanelClose}
-              onResolved={handleSidePanelResolved}
-            />
+            <BlockStack gap="400">
+              <InlineStack align="space-between">
+                <Text as="h2" variant="headingMd">
+                  {selectedProductIssues.length} issue{selectedProductIssues.length !== 1 ? "s" : ""} for this product
+                </Text>
+                <Button variant="plain" onClick={handleSidePanelClose}>✕</Button>
+              </InlineStack>
+
+              {/* Deduplicate by issue code — one card per issue type */}
+              {[...new Map(selectedProductIssues.map((i) => [i.code, i])).values()].map((issue) => {
+                const similar = similarDataMap.get(issue.code);
+                return (
+                  <IssueSidePanel
+                    key={issue.code}
+                    issue={issue}
+                    catalogId={catalogId}
+                    similarCount={similar?.affectedCount ?? 1}
+                    similarKeys={similar?.affectedKeys ?? (issue.sourceKey ? [issue.sourceKey] : [])}
+                    detectedFields={similar?.detectedFields}
+                    suggestedFix={similar?.suggestedFix ?? undefined}
+                    onClose={() => {}} // individual cards don't close the sidebar
+                    onResolved={handleSidePanelResolved}
+                  />
+                );
+              })}
+            </BlockStack>
           )}
         </div>
       )}
 
       {/* Backdrop when sidebar is open */}
-      {selectedIssue && (
+      {sidebarOpen && (
         <div
           onClick={handleSidePanelClose}
           style={{
