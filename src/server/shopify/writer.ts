@@ -132,13 +132,13 @@ function buildProductSetInput(product: CatalogProduct, locationId: string | null
     // Options: optionValues must not be null — always provide at least one
     const optionEntries = Object.entries(v.options).filter(([, val]) => Boolean(val));
     if (optionEntries.length > 0) {
-      variant.optionValues = optionEntries.map(([name, value]) => ({
-        name,
-        value,
+      variant.optionValues = optionEntries.map(([optionName, value]) => ({
+        optionName,
+        name: value,
       }));
     } else {
       // Default option so Shopify doesn't reject the variant
-      variant.optionValues = [{ name: "Title", value: "Default Title" }];
+      variant.optionValues = [{ optionName: "Title", name: "Default Title" }];
     }
 
     return variant;
