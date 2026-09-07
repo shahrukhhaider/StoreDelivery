@@ -50,7 +50,7 @@ export function IssueSidePanel({
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [fieldsExpanded, setFieldsExpanded] = useState(false);
 
-  const isSkuPattern = suggestedFix?.pattern === "{sourceKey}-{index}";
+  const isTemplatePattern = suggestedFix?.pattern === "template" || suggestedFix?.pattern === "per_variant";
 
   // Apply to single product
   const handleApply = useCallback(async () => {
@@ -58,16 +58,15 @@ export function IssueSidePanel({
     setApplying(true);
     setResult(null);
     try {
-      if (isSkuPattern) {
-        // For SKU pattern: apply {sourceKey}-001 for this single product
-        await bulkEdit(catalogId, "set_value", editField, `${issue.sourceKey}-001`, {
-          sourceKeys: [issue.sourceKey],
-        });
-      } else {
-        await bulkEdit(catalogId, "set_value", editField, editValue, {
-          sourceKeys: [issue.sourceKey],
-        });
-      }
+      await bulkEdit(
+        catalogId,
+        "set_value",
+        suggestedFix?.field ?? editField,
+        isTemplatePattern ? (suggestedFix?.value ?? editValue) : editValue,
+        { sourceKeys: [issue.sourceKey] },
+        undefined,
+        suggestedFix?.pattern as "static" | "template" | "per_variant" | undefined,
+      );
       setResult({ success: true, message: "Fix applied." });
       onResolved();
     } catch (err) {
@@ -75,41 +74,33 @@ export function IssueSidePanel({
     } finally {
       setApplying(false);
     }
-  }, [catalogId, issue.sourceKey, editField, editValue, isSkuPattern, onResolved]);
+  }, [catalogId, issue.sourceKey, editField, editValue, isTemplatePattern, suggestedFix, onResolved]);
 
   // Apply to all similar products
   const handleApplyToAll = useCallback(async () => {
     setApplyingAll(true);
     setResult(null);
     try {
-      if (isSkuPattern) {
-        // For SKU pattern: apply {sourceKey}-001 per product (need individual calls)
-        let applied = 0;
-        for (let i = 0; i < similarKeys.length; i++) {
-          const key = similarKeys[i];
-          const sku = `${key}-001`;
-          await bulkEdit(catalogId, "set_value", editField, sku, {
-            sourceKeys: [key],
-          });
-          applied++;
-        }
-        setResult({ success: true, message: `Applied unique SKUs to ${applied} product(s).` });
-      } else {
-        const res = await bulkEdit(catalogId, "set_value", editField, editValue, {
-          sourceKeys: similarKeys,
-        });
-        setResult({
-          success: true,
-          message: `Applied to ${res.affected} product(s).${res.invalid > 0 ? ` ${res.invalid} skipped (would become invalid).` : ""}`,
-        });
-      }
+      const res = await bulkEdit(
+        catalogId,
+        "set_value",
+        suggestedFix?.field ?? editField,
+        isTemplatePattern ? (suggestedFix?.value ?? editValue) : editValue,
+        { sourceKeys: similarKeys },
+        undefined,
+        suggestedFix?.pattern as "static" | "template" | "per_variant" | undefined,
+      );
+      setResult({
+        success: true,
+        message: `Applied to ${res.affected} product(s).${res.invalid > 0 ? ` ${res.invalid} skipped.` : ""}`,
+      });
       onResolved();
     } catch (err) {
       setResult({ success: false, message: (err as Error).message });
     } finally {
       setApplyingAll(false);
     }
-  }, [catalogId, editField, editValue, similarKeys, isSkuPattern, onResolved]);
+  }, [catalogId, editField, editValue, similarKeys, isTemplatePattern, suggestedFix, onResolved]);
 
   function severityBadge(severity: string) {
     switch (severity) {
@@ -187,11 +178,11 @@ export function IssueSidePanel({
             </Text>
           )}
 
-          {/* SKU pattern mode */}
-          {isSkuPattern ? (
+          {/* Template pattern mode */}
+          {isTemplatePattern ? (
             <BlockStack gap="200">
               <Text as="p" variant="bodySm">
-                Each product will get a unique SKU: <strong>{"{handle}"}-001</strong>
+                Value template: <strong>{suggestedFix?.value ?? ""}</strong>
               </Text>
               <Text as="p" variant="bodySm" tone="subdued">
                 Example: {similarKeys[0] ?? "product"}-001, {similarKeys[1] ?? "product2"}-001, …
@@ -214,7 +205,7 @@ export function IssueSidePanel({
               variant="primary"
               onClick={handleApply}
               loading={applying}
-              disabled={!isSkuPattern && !editValue}
+              disabled={!isTemplatePattern && !editValue}
             >
               {issue.sourceKey ? "Apply to this product" : "Apply"}
             </Button>
@@ -223,7 +214,7 @@ export function IssueSidePanel({
               <Button
                 onClick={handleApplyToAll}
                 loading={applyingAll}
-                disabled={!isSkuPattern && !editValue}
+                disabled={!isTemplatePattern && !editValue}
               >
                 Apply to all {String(similarCount)}
               </Button>

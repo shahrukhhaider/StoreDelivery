@@ -443,10 +443,11 @@ export async function bulkEdit(
   value?: unknown,
   filter?: { status?: string; sourceKeys?: string[] },
   replaceFrom?: string,
+  pattern?: "static" | "template" | "per_variant",
 ): Promise<BulkEditResult> {
   return request(`/catalogs/${catalogId}/edit/bulk`, {
     method: "POST",
-    body: JSON.stringify({ action, field, value, replaceFrom, filter }),
+    body: JSON.stringify({ action, field, value, replaceFrom, filter, pattern }),
   });
 }
 

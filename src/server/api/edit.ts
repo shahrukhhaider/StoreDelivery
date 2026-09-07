@@ -252,11 +252,33 @@ const bulkEditSchema = z.object({
   field: z.string(),
   value: z.unknown().optional(),
   replaceFrom: z.string().optional(),
+  // Pattern: how to generate the value per product/variant
+  // "static" (default) = same value for all
+  // "template" = use {sourceKey}, {index} placeholders
+  // "per_variant" = apply to all variants with {variantIndex} for uniqueness
+  pattern: z.enum(["static", "template", "per_variant"]).optional(),
   filter: z.object({
     status: z.string().optional(),
     sourceKeys: z.array(z.string()).optional(),
   }).optional(),
 });
+
+/**
+ * Expand a template string using product/variant context.
+ * Supports: {sourceKey}, {index}, {variantIndex}
+ */
+function expandTemplate(
+  template: string,
+  context: { sourceKey: string; index: number; variantIndex?: number },
+): string {
+  let result = template;
+  result = result.replace(/\{sourceKey\}/g, context.sourceKey);
+  result = result.replace(/\{index\}/g, String(context.index + 1).padStart(3, "0"));
+  if (context.variantIndex !== undefined) {
+    result = result.replace(/\{variantIndex\}/g, String(context.variantIndex + 1).padStart(3, "0"));
+  }
+  return result;
+}
 
 router.post("/:id/edit/bulk", async (req, res, next) => {
   try {
@@ -267,6 +289,7 @@ router.post("/:id/edit/bulk", async (req, res, next) => {
     if (!catalog) { res.status(404).json({ error: "NOT_FOUND" }); return; }
 
     const body = bulkEditSchema.parse(req.body);
+    const pattern = body.pattern ?? "static";
 
     // Load affected products
     const where: Record<string, unknown> = { catalogId: catalog.id };
@@ -275,58 +298,72 @@ router.post("/:id/edit/bulk", async (req, res, next) => {
 
     const products = await prisma.catalogProduct.findMany({ where: where as never });
 
-    // P4.3: For large batches (>1000 rows), run asynchronously
-    if (products.length > 1000) {
-      logger.info("Bulk edit queued async", {
-        catalogId: catalog.id,
-        productCount: products.length,
-      });
-
-      // Fire and forget — process in background
-      processBulkEditAsync(catalog.id, products, body, prisma, logger).catch((err) => {
-        logger.error("Async bulk edit failed", { error: (err as Error).message });
-      });
-
-      res.json({
-        affected: 0,
-        invalid: 0,
-        total: products.length,
-        async: true,
-        message: `Processing ${products.length} products in background. Reload to see results.`,
-      });
-      return;
-    }
-
     let affectedCount = 0;
     let invalidCount = 0;
+    let overridesCreated = 0;
 
-    for (const product of products) {
+    for (let pi = 0; pi < products.length; pi++) {
+      const product = products[pi];
       const source = product.normalizedJson as unknown as CatalogProduct;
-      const oldValue = getNestedValue(source, body.field);
 
-      let newValue: unknown;
-      switch (body.action) {
-        case "set_value":
-          newValue = body.value;
-          break;
-        case "replace_value":
-          if (typeof oldValue === "string" && body.replaceFrom) {
-            newValue = oldValue.replace(body.replaceFrom, String(body.value ?? ""));
-          } else {
-            continue;
+      // Determine which fields to apply to
+      const isVariantWildcard = body.field.includes("[*]");
+      const variantCount = source.variants?.length ?? 1;
+
+      // Build list of (field, newValue) pairs for this product
+      const edits: Array<{ field: string; newValue: unknown }> = [];
+
+      if (isVariantWildcard && (pattern === "per_variant" || pattern === "template")) {
+        // Apply to all variants: expand variants[*].sku → variants[0].sku, variants[1].sku, etc.
+        const baseField = body.field.replace("[*]", "");
+        for (let vi = 0; vi < variantCount; vi++) {
+          const expandedField = `variants[${vi}]${baseField.startsWith(".") ? baseField : "." + baseField}`;
+          const realField = body.field.replace("[*]", `[${vi}]`);
+
+          let val: unknown;
+          if (body.action === "clear_value") {
+            val = null;
+          } else if (body.action === "set_value") {
+            const tpl = String(body.value ?? "");
+            val = expandTemplate(tpl, { sourceKey: source.sourceKey ?? product.sourceKey, index: pi, variantIndex: vi });
+          } else if (body.action === "replace_value") {
+            const oldVal = getNestedValue(source, realField);
+            if (typeof oldVal === "string" && body.replaceFrom) {
+              val = oldVal.replace(body.replaceFrom, String(body.value ?? ""));
+            } else { continue; }
           }
-          break;
-        case "clear_value":
-          newValue = null;
-          break;
+
+          edits.push({ field: realField, newValue: val });
+        }
+      } else if (pattern === "template") {
+        // Single field with template expansion
+        const tpl = String(body.value ?? "");
+        const val = expandTemplate(tpl, { sourceKey: source.sourceKey ?? product.sourceKey, index: pi });
+        edits.push({ field: body.field, newValue: val });
+      } else {
+        // Static: same value for all
+        let val: unknown;
+        if (body.action === "clear_value") val = null;
+        else if (body.action === "set_value") val = body.value;
+        else if (body.action === "replace_value") {
+          const oldVal = getNestedValue(source, body.field);
+          if (typeof oldVal === "string" && body.replaceFrom) {
+            val = oldVal.replace(body.replaceFrom, String(body.value ?? ""));
+          } else { continue; }
+        }
+        edits.push({ field: body.field, newValue: val });
       }
 
-      // Skip if no change
-      if (JSON.stringify(oldValue) === JSON.stringify(newValue)) continue;
+      if (edits.length === 0) continue;
 
-      // Validate the change
-      const testOverride: Override[] = [{ field: body.field, oldValue, newValue, source: "bulk_rule" }];
-      const resolved = applyOverrides(source, testOverride);
+      // Validate all edits together
+      const testOverrides: Override[] = edits.map((e) => ({
+        field: e.field,
+        oldValue: getNestedValue(source, e.field),
+        newValue: e.newValue,
+        source: "bulk_rule" as const,
+      }));
+      const resolved = applyOverrides(source, testOverrides);
       const validation = validateCatalog([resolved]);
 
       if (validation.blockingCount > 0) {
@@ -334,16 +371,23 @@ router.post("/:id/edit/bulk", async (req, res, next) => {
         continue;
       }
 
-      await prisma.catalogOverride.create({
-        data: {
-          catalogId: catalog.id,
-          productId: product.id,
-          field: body.field,
-          oldValue: oldValue !== undefined ? (oldValue as Prisma.InputJsonValue) : Prisma.JsonNull,
-          newValue: newValue as Prisma.InputJsonValue,
-          source: "bulk_rule",
-        },
-      });
+      // Create overrides
+      for (const edit of edits) {
+        const oldValue = getNestedValue(source, edit.field);
+        if (JSON.stringify(oldValue) === JSON.stringify(edit.newValue)) continue;
+
+        await prisma.catalogOverride.create({
+          data: {
+            catalogId: catalog.id,
+            productId: product.id,
+            field: edit.field,
+            oldValue: oldValue !== undefined ? (oldValue as Prisma.InputJsonValue) : Prisma.JsonNull,
+            newValue: edit.newValue as Prisma.InputJsonValue,
+            source: "bulk_rule",
+          },
+        });
+        overridesCreated++;
+      }
       affectedCount++;
     }
 
@@ -351,14 +395,18 @@ router.post("/:id/edit/bulk", async (req, res, next) => {
       catalogId: catalog.id,
       action: body.action,
       field: body.field,
+      pattern,
       affected: affectedCount,
       invalid: invalidCount,
+      overridesCreated,
     });
 
     res.json({
       affected: affectedCount,
       invalid: invalidCount,
       total: products.length,
+      overridesCreated,
+      pattern,
     });
   } catch (err) { next(err); }
 });
@@ -720,10 +768,10 @@ router.post("/:id/edit/similar", async (req, res, next) => {
       // Suggest prefix-based unique SKUs using sourceKey
       const sampleKey = affectedKeys[0] ?? "PRODUCT";
       suggestedFix = {
-        field: "variants[0].sku",
-        value: `${sampleKey}-001`,
-        explanation: `Generate unique SKUs using the product handle as prefix. Each product gets {handle}-001, {handle}-002, etc.`,
-        pattern: "{sourceKey}-{index}",
+        field: "variants[*].sku",
+        value: "{sourceKey}-{variantIndex}",
+        explanation: `Generate unique SKUs using the product handle as prefix. Each variant gets {handle}-001, {handle}-002, etc.`,
+        pattern: "per_variant",
       };
     } else if (body.issueCode === "MISSING_TITLE") {
       // Suggest using vendor + product type or sourceKey as title
