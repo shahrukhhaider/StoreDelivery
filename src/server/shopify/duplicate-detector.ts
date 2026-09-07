@@ -23,6 +23,7 @@ type ShopifyProductEdge = {
     variants: {
       edges: Array<{
         node: {
+          id: string;
           sku: string | null;
           barcode: string | null;
         };
@@ -41,6 +42,7 @@ const PRODUCTS_QUERY = `
           variants(first: 100) {
             edges {
               node {
+                id
                 sku
                 barcode
               }
@@ -176,4 +178,76 @@ export function detectDuplicates(
   }
 
   return matches;
+}
+
+/**
+ * Build a ShopifyIdentityIndex with variant-level IDs for reconciliation.
+ * Enhanced version of fetchExistingIdentifiers that preserves variant GIDs.
+ */
+export async function fetchShopifyIdentityIndex(
+  client: ShopifyGraphQLClient,
+): Promise<{
+  skus: Map<string, { productId: string; variantId: string }>;
+  barcodes: Map<string, { productId: string; variantId: string }>;
+  titles: Map<string, string>;
+}> {
+  const logger = getLogger();
+  const skus = new Map<string, { productId: string; variantId: string }>();
+  const barcodes = new Map<string, { productId: string; variantId: string }>();
+  const titles = new Map<string, string>();
+
+  let cursor: string | null = null;
+  let pageCount = 0;
+
+  type ProductsQueryResult = {
+    products: {
+      edges: ShopifyProductEdge[];
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    };
+  };
+
+  while (true) {
+    const res: GraphQLResponse<ProductsQueryResult> = await client.query<ProductsQueryResult>(
+      PRODUCTS_QUERY, { cursor }, "ExistingProducts",
+    );
+
+    if (res.errors?.length) {
+      logger.error("Failed to fetch existing products for reconciliation", { errors: res.errors });
+      break;
+    }
+
+    const products: ProductsQueryResult["products"] | undefined = res.data?.products;
+    if (!products) break;
+
+    for (const edge of products.edges) {
+      const product = edge.node;
+      const productId = product.id;
+
+      titles.set(product.title.toLowerCase().trim(), productId);
+
+      for (const variantEdge of product.variants.edges) {
+        const variant = variantEdge.node;
+        const variantId = variant.id;
+        if (variant.sku) {
+          skus.set(variant.sku.toLowerCase().trim(), { productId, variantId });
+        }
+        if (variant.barcode) {
+          barcodes.set(variant.barcode.toLowerCase().trim(), { productId, variantId });
+        }
+      }
+    }
+
+    pageCount++;
+    if (!products.pageInfo.hasNextPage) break;
+    cursor = products.pageInfo.endCursor;
+  }
+
+  logger.info("Shopify identity index built", {
+    skus: skus.size,
+    barcodes: barcodes.size,
+    titles: titles.size,
+    pages: pageCount,
+  });
+
+  return { skus, barcodes, titles };
 }
