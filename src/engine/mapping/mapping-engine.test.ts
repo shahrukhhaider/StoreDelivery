@@ -107,4 +107,113 @@ describe("mapColumns", () => {
     const result = await mapColumns(sheet);
     expect(result.mappings).toHaveLength(5);
   });
+
+  // --- Shopify CSV option name mapping ---
+
+  describe("Shopify CSV option name mapping", () => {
+    it("maps Option1 Name to variant.option1Name with high confidence", async () => {
+      const sheet: ParsedSheet = {
+        headers: ["Option1 Name", "Option1 Value", "Option2 Name", "Option2 Value"],
+        rows: [
+          { "Option1 Name": "Color", "Option1 Value": "Red", "Option2 Name": "Size", "Option2 Value": "S" },
+          { "Option1 Name": "", "Option1 Value": "Blue", "Option2 Name": "", "Option2 Value": "M" },
+        ],
+        delimiter: ",",
+        rowCount: 2,
+      };
+
+      const result = await mapColumns(sheet);
+
+      const opt1Name = result.mappings.find((m) => m.sourceColumn === "Option1 Name");
+      expect(opt1Name?.targetField).toBe("variant.option1Name");
+      expect(opt1Name?.confidence).toBe("high");
+
+      const opt1Value = result.mappings.find((m) => m.sourceColumn === "Option1 Value");
+      expect(opt1Value?.targetField).toBe("variant.option1");
+      expect(opt1Value?.confidence).toBe("high");
+
+      const opt2Name = result.mappings.find((m) => m.sourceColumn === "Option2 Name");
+      expect(opt2Name?.targetField).toBe("variant.option2Name");
+      expect(opt2Name?.confidence).toBe("high");
+
+      const opt2Value = result.mappings.find((m) => m.sourceColumn === "Option2 Value");
+      expect(opt2Value?.targetField).toBe("variant.option2");
+      expect(opt2Value?.confidence).toBe("high");
+    });
+
+    it("maps all Shopify CSV headers with zero unmapped", async () => {
+      // Simulate the full Shopify bicycles CSV header set
+      const headers = [
+        "Handle", "Title", "Body (HTML)", "Vendor", "Type", "Tags", "Published",
+        "Option1 Name", "Option1 Value", "Option2 Name", "Option2 Value",
+        "Option3 Name", "Option3 Value",
+        "Variant SKU", "Variant Grams", "Variant Inventory Tracker",
+        "Variant Inventory Qty", "Variant Inventory Policy",
+        "Variant Fulfillment Service", "Variant Price", "Variant Compare At Price",
+        "Variant Requires Shipping", "Variant Taxable", "Variant Barcode",
+        "Image Src", "Image Alt Text", "Gift Card",
+        "SEO Title", "SEO Description",
+        "Google Shopping / Google Product Category",
+        "Google Shopping / Gender", "Google Shopping / Age Group",
+        "Google Shopping / MPN", "Google Shopping / AdWords Grouping",
+        "Google Shopping / AdWords Labels", "Google Shopping / Condition",
+        "Google Shopping / Custom Product",
+        "Google Shopping / Custom Label 0", "Google Shopping / Custom Label 1",
+        "Google Shopping / Custom Label 2", "Google Shopping / Custom Label 3",
+        "Google Shopping / Custom Label 4",
+        "Variant Image", "Variant Weight Unit",
+      ];
+
+      const rows = [Object.fromEntries(headers.map((h) => [h, "sample"]))];
+      const sheet: ParsedSheet = { headers, rows, delimiter: ",", rowCount: 1 };
+
+      const result = await mapColumns(sheet);
+
+      // Every column should be mapped (not unmapped)
+      expect(result.unmapped).toHaveLength(0);
+
+      // Verify specific option name mappings
+      expect(result.mappings.find((m) => m.sourceColumn === "Option1 Name")?.targetField).toBe("variant.option1Name");
+      expect(result.mappings.find((m) => m.sourceColumn === "Option2 Name")?.targetField).toBe("variant.option2Name");
+      expect(result.mappings.find((m) => m.sourceColumn === "Option3 Name")?.targetField).toBe("variant.option3Name");
+      expect(result.mappings.find((m) => m.sourceColumn === "Variant Weight Unit")?.targetField).toBe("variant.weightUnit");
+    });
+
+    it("option name + value + grouping produce correct product options", async () => {
+      // End-to-end: mapping → grouping verifies that the option names
+      // are used as keys in the variant options
+      const { groupRows } = await import("../grouping/grouping-engine.js");
+
+      const sheet: ParsedSheet = {
+        headers: ["Handle", "Title", "Option1 Name", "Option1 Value", "Variant SKU"],
+        rows: [
+          { Handle: "shoe", Title: "Running Shoe", "Option1 Name": "Size", "Option1 Value": "9", "Variant SKU": "SHOE-9" },
+          { Handle: "shoe", Title: "", "Option1 Name": "", "Option1 Value": "10", "Variant SKU": "SHOE-10" },
+          { Handle: "shoe", Title: "", "Option1 Name": "", "Option1 Value": "11", "Variant SKU": "SHOE-11" },
+        ],
+        delimiter: ",",
+        rowCount: 3,
+      };
+
+      // Step 1: Map columns
+      const mappingResult = await mapColumns(sheet);
+
+      // Verify option name mapped
+      expect(mappingResult.mappings.find((m) => m.sourceColumn === "Option1 Name")?.targetField).toBe("variant.option1Name");
+
+      // Step 2: Group rows using the mappings
+      const groupResult = groupRows(sheet, mappingResult.mappings);
+      expect(groupResult.products).toHaveLength(1);
+
+      const product = groupResult.products[0];
+      expect(product.title).toBe("Running Shoe");
+      expect(product.variants).toHaveLength(3);
+
+      // Option key should be "Size", not "Option 1"
+      expect(product.variants[0].options).toHaveProperty("Size", "9");
+      expect(product.variants[1].options).toHaveProperty("Size", "10");
+      expect(product.variants[2].options).toHaveProperty("Size", "11");
+      expect(product.variants[0].options).not.toHaveProperty("Option 1");
+    });
+  });
 });
