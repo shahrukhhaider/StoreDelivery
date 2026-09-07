@@ -10,8 +10,9 @@ import { getPrisma } from "../db.js";
 import { getLogger } from "../logger.js";
 import { ShopifyGraphQLClient } from "../shopify/graphql-client.js";
 import { getAccessToken } from "../shopify/auth.js";
-import { fetchExistingIdentifiers, detectDuplicates } from "../shopify/duplicate-detector.js";
 import { writeProducts, getPrimaryLocationId, type WriteResult } from "../shopify/writer.js";
+import { persistVariantMappings } from "../shopify/variant-mapping.js";
+import { runReconciliation, persistReconciliationMappings } from "../reconciliation/reconciliation-service.js";
 import type { CatalogProduct } from "@shared/types/catalog.js";
 
 /**
@@ -90,20 +91,42 @@ export async function executeImport(operationId: string): Promise<void> {
       return applyOverrides(source, productOverrides);
     });
 
-    // Duplicate detection
-    logger.info("Running duplicate detection", { productCount: catalogProducts.length });
-    const existing = await fetchExistingIdentifiers(client);
-    const duplicates = detectDuplicates(catalogProducts, existing);
-    const duplicateKeys = new Set(duplicates.map((d) => d.sourceKey));
+    // Reconciliation — classify products against persisted mappings + Shopify
+    const catalog = operation.catalog;
+    const schemaFingerprint = catalog.schemaFingerprint ?? "unknown";
 
-    logger.info("Duplicate detection complete", {
-      total: catalogProducts.length,
-      duplicates: duplicates.length,
+    logger.info("Running reconciliation", { productCount: catalogProducts.length });
+    const reconciliation = await runReconciliation(
+      operation.shopId,
+      operation.catalogId,
+      schemaFingerprint,
+      catalogProducts,
+      client,
+    );
+
+    logger.info("Reconciliation complete", {
+      summary: reconciliation.summary,
+      catalogRunId: reconciliation.catalogRunId,
     });
 
-    // Determine which products to import vs skip
-    const toImport = catalogProducts.filter((p) => !duplicateKeys.has(p.sourceKey));
-    const toSkip = catalogProducts.filter((p) => duplicateKeys.has(p.sourceKey));
+    // Determine which products to import vs skip based on classification
+    // NEW_PRODUCT → create, EXISTING_MAPPED → skip (no update in V1),
+    // LIKELY_EXISTING with HIGH confidence → skip (auto-linked),
+    // NEEDS_REVIEW → skip (hold for merchant)
+    const toCreateKeys = new Set<string>();
+    const toSkipKeys = new Set<string>();
+
+    for (const c of reconciliation.classifications) {
+      if (c.classification === "NEW_PRODUCT") {
+        toCreateKeys.add(c.sourceProductKey);
+      } else {
+        // EXISTING_MAPPED, LIKELY_EXISTING, NEEDS_REVIEW, NO_CHANGE → skip
+        toSkipKeys.add(c.sourceProductKey);
+      }
+    }
+
+    const toImport = catalogProducts.filter((p) => toCreateKeys.has(p.sourceKey));
+    const toSkip = catalogProducts.filter((p) => toSkipKeys.has(p.sourceKey));
 
     // Check for existing import items (resumability)
     const existingItems = await prisma.importItem.findMany({
@@ -159,6 +182,12 @@ export async function executeImport(operationId: string): Promise<void> {
     // Fetch primary location for inventory
     const locationId = await getPrimaryLocationId(client, operation.shop.shopDomain);
 
+    // Build product lookup map for onItemComplete callback
+    const productBySourceKey = new Map<string, CatalogProduct>();
+    for (const p of productsToWrite) {
+      productBySourceKey.set(p.sourceKey, p);
+    }
+
     // Write products
     let successCount = existingItems.filter((i) => i.status === "success").length;
     let failedCount = existingItems.filter((i) => i.status === "failed").length;
@@ -183,6 +212,20 @@ export async function executeImport(operationId: string): Promise<void> {
 
         if (result.success) {
           successCount++;
+
+          // Persist variant mappings after successful Shopify write
+          // (spec: persist only after mutation succeeds)
+          const product = productBySourceKey.get(result.sourceKey);
+          if (product) {
+            await persistVariantMappings(operation.shopId, product, result);
+            // Also persist reconciliation-level product + variant mappings
+            await persistReconciliationMappings(
+              operation.shopId,
+              reconciliation.supplierProfileId,
+              product,
+              result,
+            );
+          }
         } else {
           failedCount++;
         }
@@ -307,6 +350,23 @@ export async function retryFailedItems(operationId: string): Promise<void> {
     .filter((p) => failedKeys.has(p.sourceKey))
     .map((p) => p.normalizedJson as unknown as CatalogProduct);
 
+  // Resolve supplier profile for reconciliation mapping persistence
+  const catalog = await prisma.catalog.findUnique({
+    where: { id: operation.catalogId },
+    select: { schemaFingerprint: true },
+  });
+  const supplierProfile = catalog
+    ? await prisma.supplierProfile.findUnique({
+        where: {
+          shopId_schemaFingerprint: {
+            shopId: operation.shopId,
+            schemaFingerprint: catalog.schemaFingerprint,
+          },
+        },
+        select: { id: true },
+      })
+    : null;
+
   // Reset failed items to pending
   await prisma.importItem.updateMany({
     where: { importOperationId: operationId, status: "failed" },
@@ -329,6 +389,12 @@ export async function retryFailedItems(operationId: string): Promise<void> {
 
   const locationId = await getPrimaryLocationId(client, operation.shop.shopDomain);
 
+  // Build product lookup map for onItemComplete callback
+  const retryProductBySourceKey = new Map<string, CatalogProduct>();
+  for (const p of productsToRetry) {
+    retryProductBySourceKey.set(p.sourceKey, p);
+  }
+
   await writeProducts(client, productsToRetry, {
     locationId,
     shopDomain: operation.shop.shopDomain,
@@ -348,6 +414,21 @@ export async function retryFailedItems(operationId: string): Promise<void> {
 
       if (result.success) {
         successCount++;
+
+        // Persist variant mappings on retry success (idempotent upsert)
+        const product = retryProductBySourceKey.get(result.sourceKey);
+        if (product) {
+          await persistVariantMappings(operation.shopId, product, result);
+          // Also persist reconciliation-level mappings if supplier profile exists
+          if (supplierProfile) {
+            await persistReconciliationMappings(
+              operation.shopId,
+              supplierProfile.id,
+              product,
+              result,
+            );
+          }
+        }
       } else {
         failedCount++;
       }

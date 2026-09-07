@@ -22,6 +22,10 @@ model Shop {
   catalogUploads   CatalogUpload[]
   catalogs         Catalog[]
   importOperations ImportOperation[]
+  variantMappings  CatalogVariantMapping[]
+  supplierProfiles SupplierProfile[]
+  productMappings  ProductMapping[]
+  catalogRuns      CatalogRun[]
 
   @@map("shops")
 }
@@ -240,4 +244,235 @@ model ImportSnapshot {
 
   @@index([catalogId])
   @@map("import_snapshots")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog Variant Mappings — SKU Persistence Layer
+//
+// Persists source→Shopify variant identity after successful writes.
+// SKU is an attribute of the mapping, not the primary identity.
+// A source variant can remain mapped to the same Shopify variant even when
+// its supplier SKU is missing, generated, changed, or different from the
+// Shopify SKU.
+// ---------------------------------------------------------------------------
+
+enum SkuSourceEnum {
+  SUPPLIER
+  MERCHANT
+  STOREDELIVERY_GENERATED
+  NONE
+}
+
+model CatalogVariantMapping {
+  id                       String        @id @default(cuid())
+  shopId                   String        @map("shop_id")
+  sourceProductKey         String        @map("source_product_key")
+  sourceVariantKey         String        @map("source_variant_key")
+  sourceVariantFingerprint String        @map("source_variant_fingerprint")
+  shopifyProductId         String        @map("shopify_product_id")
+  shopifyVariantId         String        @map("shopify_variant_id")
+
+  /// Supplier-provided SKU (from the source file). Null if absent.
+  sourceSku                String?       @map("source_sku")
+  /// SKU currently on the Shopify variant. Null if none.
+  shopifySku               String?       @map("shopify_sku")
+  /// Where the Shopify SKU originated.
+  skuSource                SkuSourceEnum @map("sku_source")
+
+  createdAt                DateTime      @default(now()) @map("created_at")
+  updatedAt                DateTime      @updatedAt @map("updated_at")
+
+  shop Shop @relation(fields: [shopId], references: [id])
+
+  /// One mapping per source variant per shop — upsert on retry.
+  @@unique([shopId, sourceVariantFingerprint])
+  @@index([shopId])
+  @@index([shopId, sourceProductKey])
+  @@index([shopifyVariantId])
+  @@map("catalog_variant_mappings")
+}
+
+// ---------------------------------------------------------------------------
+// Supplier Profiles — recurring supplier/source identity
+// ---------------------------------------------------------------------------
+
+model SupplierProfile {
+  id                String   @id @default(cuid())
+  shopId            String   @map("shop_id")
+  name              String
+  schemaFingerprint String   @map("schema_fingerprint")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  shop            Shop             @relation(fields: [shopId], references: [id])
+  productMappings ProductMapping[]
+  catalogRuns     CatalogRun[]
+
+  @@unique([shopId, schemaFingerprint])
+  @@index([shopId])
+  @@map("supplier_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Product Mappings — source product ↔ Shopify product identity
+// ---------------------------------------------------------------------------
+
+enum MappingStatusEnum {
+  MAPPED
+  CANDIDATE_MATCH
+  AMBIGUOUS
+  UNMAPPED
+}
+
+enum MatchConfidenceEnum {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model ProductMapping {
+  id                       String              @id @default(cuid())
+  shopId                   String              @map("shop_id")
+  supplierProfileId        String              @map("supplier_profile_id")
+
+  sourceProductKey         String              @map("source_product_key")
+  sourceProductFingerprint String              @map("source_product_fingerprint")
+
+  shopifyProductId         String?             @map("shopify_product_id")
+
+  mappingStatus            MappingStatusEnum   @map("mapping_status")
+  matchMethod              String?             @map("match_method")
+  confidence               MatchConfidenceEnum?
+
+  createdAt                DateTime            @default(now()) @map("created_at")
+  updatedAt                DateTime            @updatedAt @map("updated_at")
+  lastSeenAt               DateTime            @default(now()) @map("last_seen_at")
+
+  shop            Shop              @relation(fields: [shopId], references: [id])
+  supplierProfile SupplierProfile   @relation(fields: [supplierProfileId], references: [id])
+  variantMappings VariantMapping[]
+
+  @@unique([supplierProfileId, sourceProductKey])
+  @@index([shopId])
+  @@index([supplierProfileId])
+  @@index([shopifyProductId])
+  @@map("product_mappings")
+}
+
+// ---------------------------------------------------------------------------
+// Variant Mappings — source variant ↔ Shopify variant identity
+//
+// Replaces the flat CatalogVariantMapping with a hierarchical model
+// under ProductMapping for proper reconciliation.
+// ---------------------------------------------------------------------------
+
+model VariantMapping {
+  id                       String              @id @default(cuid())
+  productMappingId         String              @map("product_mapping_id")
+
+  sourceVariantKey         String              @map("source_variant_key")
+  sourceVariantFingerprint String              @map("source_variant_fingerprint")
+
+  sourceSku                String?             @map("source_sku")
+  barcode                  String?
+  mpn                      String?
+
+  shopifyVariantId         String?             @map("shopify_variant_id")
+  shopifySku               String?             @map("shopify_sku")
+  skuSource                SkuSourceEnum       @map("sku_source")
+
+  matchMethod              String?             @map("match_method")
+  confidence               MatchConfidenceEnum?
+
+  createdAt                DateTime            @default(now()) @map("created_at")
+  updatedAt                DateTime            @updatedAt @map("updated_at")
+  lastSeenAt               DateTime            @default(now()) @map("last_seen_at")
+
+  productMapping ProductMapping @relation(fields: [productMappingId], references: [id])
+
+  @@unique([productMappingId, sourceVariantFingerprint])
+  @@index([productMappingId])
+  @@index([shopifyVariantId])
+  @@map("variant_mappings")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog Runs — per-upload reconciliation history
+// ---------------------------------------------------------------------------
+
+enum CatalogRunStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model CatalogRun {
+  id                  String           @id @default(cuid())
+  supplierProfileId   String           @map("supplier_profile_id")
+  shopId              String           @map("shop_id")
+  catalogId           String?          @map("catalog_id")
+  sourceFileHash      String?          @map("source_file_hash")
+  schemaFingerprint   String?          @map("schema_fingerprint")
+  status              CatalogRunStatus @default(IN_PROGRESS)
+
+  /// Summary counts
+  totalProducts       Int              @default(0) @map("total_products")
+  mappedCount         Int              @default(0) @map("mapped_count")
+  matchedCount        Int              @default(0) @map("matched_count")
+  newCount            Int              @default(0) @map("new_count")
+  reviewCount         Int              @default(0) @map("review_count")
+
+  startedAt           DateTime         @default(now()) @map("started_at")
+  completedAt         DateTime?        @map("completed_at")
+
+  supplierProfile SupplierProfile @relation(fields: [supplierProfileId], references: [id])
+  shop            Shop            @relation(fields: [shopId], references: [id])
+  items           RunItem[]
+
+  @@index([supplierProfileId])
+  @@index([shopId])
+  @@map("catalog_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Run Items — per-product reconciliation result within a run
+// ---------------------------------------------------------------------------
+
+enum ReconciliationClassification {
+  EXISTING_MAPPED
+  LIKELY_EXISTING
+  NEW_PRODUCT
+  NEEDS_REVIEW
+  NO_CHANGE
+}
+
+enum ProposedActionEnum {
+  CREATE_PRODUCT
+  CREATE_VARIANT
+  LINK_EXISTING_PRODUCT
+  LINK_EXISTING_VARIANT
+  NO_CHANGE
+  SKIP
+}
+
+model RunItem {
+  id                    String                       @id @default(cuid())
+  catalogRunId          String                       @map("catalog_run_id")
+
+  sourceProductKey      String                       @map("source_product_key")
+  classification        ReconciliationClassification
+  proposedAction        ProposedActionEnum           @map("proposed_action")
+
+  productMappingId      String?                      @map("product_mapping_id")
+  matchedShopifyId      String?                      @map("matched_shopify_id")
+  confidence            MatchConfidenceEnum?
+  matchEvidence         Json?                        @map("match_evidence")
+
+  merchantConfirmed     Boolean                      @default(false) @map("merchant_confirmed")
+
+  catalogRun CatalogRun @relation(fields: [catalogRunId], references: [id])
+
+  @@index([catalogRunId])
+  @@unique([catalogRunId, sourceProductKey])
+  @@map("run_items")
 }
