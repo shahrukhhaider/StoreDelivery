@@ -293,3 +293,99 @@ describe("files (images) format", () => {
     expect(productSet.files).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Full chain: real option names flow through to Shopify productSet
+// ---------------------------------------------------------------------------
+
+describe("option names flow from CSV to Shopify", () => {
+  it("uses real option names (Color, Size) in optionValues and productOptions", () => {
+    // Simulate what the grouping engine produces when Option1 Name = "Color"
+    const product = makeProduct({
+      variants: [
+        { sourceKey: "V1", sku: "TEE-RED-S", options: { Color: "Red", Size: "S" }, price: "19.99", sourceData: {} },
+        { sourceKey: "V2", sku: "TEE-RED-M", options: { Color: "Red", Size: "M" }, price: "19.99", sourceData: {} },
+        { sourceKey: "V3", sku: "TEE-BLU-S", options: { Color: "Blue", Size: "S" }, price: "19.99", sourceData: {} },
+      ],
+    });
+
+    const { productSet } = _buildProductSetInput(product, null);
+
+    // productOptions should declare "Color" and "Size", not "Option 1" and "Option 2"
+    const productOptions = productSet.productOptions as Array<{ name: string; values: Array<{ name: string }> }>;
+    const optionNames = productOptions.map((o) => o.name);
+    expect(optionNames).toContain("Color");
+    expect(optionNames).toContain("Size");
+    expect(optionNames).not.toContain("Option 1");
+    expect(optionNames).not.toContain("Option 2");
+
+    // Color option should have Red and Blue values
+    const colorOpt = productOptions.find((o) => o.name === "Color")!;
+    expect(colorOpt.values.map((v) => v.name)).toContain("Red");
+    expect(colorOpt.values.map((v) => v.name)).toContain("Blue");
+
+    // Size option should have S and M values
+    const sizeOpt = productOptions.find((o) => o.name === "Size")!;
+    expect(sizeOpt.values.map((v) => v.name)).toContain("S");
+    expect(sizeOpt.values.map((v) => v.name)).toContain("M");
+
+    // Each variant's optionValues should use "Color" and "Size" as optionName
+    const variants = productSet.variants as Array<{ optionValues: Array<{ optionName: string; name: string }> }>;
+    expect(variants[0].optionValues).toContainEqual({ optionName: "Color", name: "Red" });
+    expect(variants[0].optionValues).toContainEqual({ optionName: "Size", name: "S" });
+    expect(variants[2].optionValues).toContainEqual({ optionName: "Color", name: "Blue" });
+  });
+
+  it("end-to-end: grouping with Option Name → writer produces correct Shopify format", async () => {
+    // Simulate the full chain: grouping engine output → writer input
+    const { groupRows } = await import("../../engine/grouping/grouping-engine.js");
+
+    const sheet = {
+      headers: ["Handle", "Title", "Option1 Name", "Option1 Value", "Option2 Name", "Option2 Value", "Variant SKU", "Variant Price"],
+      rows: [
+        { Handle: "classic-tee", Title: "Classic Tee", "Option1 Name": "Color", "Option1 Value": "Red", "Option2 Name": "Size", "Option2 Value": "S", "Variant SKU": "TEE-R-S", "Variant Price": "25" },
+        { Handle: "classic-tee", Title: "", "Option1 Name": "", "Option1 Value": "Blue", "Option2 Name": "", "Option2 Value": "M", "Variant SKU": "TEE-B-M", "Variant Price": "25" },
+      ],
+      delimiter: ",",
+      rowCount: 2,
+    };
+
+    const mappings = [
+      { sourceColumn: "Handle", targetField: "grouping.parentKey" as const, confidence: "high" as const, mappingSource: "rule" as const, ignored: false },
+      { sourceColumn: "Title", targetField: "product.title" as const, confidence: "high" as const, mappingSource: "rule" as const, ignored: false },
+      { sourceColumn: "Option1 Name", targetField: "variant.option1Name" as const, confidence: "high" as const, mappingSource: "rule" as const, ignored: false },
+      { sourceColumn: "Option1 Value", targetField: "variant.option1" as const, confidence: "high" as const, mappingSource: "rule" as const, ignored: false },
+      { sourceColumn: "Option2 Name", targetField: "variant.option2Name" as const, confidence: "high" as const, mappingSource: "rule" as const, ignored: false },
+      { sourceColumn: "Option2 Value", targetField: "variant.option2" as const, confidence: "high" as const, mappingSource: "rule" as const, ignored: false },
+      { sourceColumn: "Variant SKU", targetField: "variant.sku" as const, confidence: "high" as const, mappingSource: "rule" as const, ignored: false },
+      { sourceColumn: "Variant Price", targetField: "variant.price" as const, confidence: "high" as const, mappingSource: "rule" as const, ignored: false },
+    ];
+
+    // Step 1: Grouping engine produces products with real option names
+    const groupResult = groupRows(sheet, mappings);
+    expect(groupResult.products).toHaveLength(1);
+    const product = groupResult.products[0];
+    expect(product.variants[0].options).toHaveProperty("Color", "Red");
+    expect(product.variants[0].options).toHaveProperty("Size", "S");
+
+    // Step 2: Writer converts to Shopify productSet format
+    const { productSet } = _buildProductSetInput(product, null);
+
+    // productOptions uses "Color" and "Size"
+    const productOptions = productSet.productOptions as Array<{ name: string; values: Array<{ name: string }> }>;
+    expect(productOptions.map((o) => o.name)).toContain("Color");
+    expect(productOptions.map((o) => o.name)).toContain("Size");
+
+    // Variant optionValues uses "Color" and "Size" as optionName
+    const variants = productSet.variants as Array<{ optionValues: Array<{ optionName: string; name: string }> }>;
+    expect(variants[0].optionValues).toContainEqual({ optionName: "Color", name: "Red" });
+    expect(variants[0].optionValues).toContainEqual({ optionName: "Size", name: "S" });
+    expect(variants[1].optionValues).toContainEqual({ optionName: "Color", name: "Blue" });
+    expect(variants[1].optionValues).toContainEqual({ optionName: "Size", name: "M" });
+
+    // No "Option 1" or "Option 2" anywhere
+    const allOptionNames = productOptions.map((o) => o.name);
+    expect(allOptionNames).not.toContain("Option 1");
+    expect(allOptionNames).not.toContain("Option 2");
+  });
+});
