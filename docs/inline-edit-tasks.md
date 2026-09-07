@@ -2,10 +2,14 @@
 
 ## Phase 1: Foundation (Data Model + API)
 
-### P1.1 — Database: catalog_overrides table
+### P1.1 — Database: catalog_overrides table + import_snapshots table
 - Add Prisma model `CatalogOverride` with fields: `id`, `catalogId`, `productId`, `field`, `oldValue`, `newValue`, `source` (user | bulk_rule | auto_fix), `createdAt`
+- Add Prisma model `ImportSnapshot` with fields: `id`, `importOperationId` (unique), `catalogId`, `appliedOverrides` (JSON — collapsed diff of all edits), `resolvedProductCount`, `createdAt`
+- `CatalogOverride` is **temporary** — session edits, cleaned up after import or abandon
+- `ImportSnapshot` is **permanent** — captures the final applied diff at import time, kept for future rollback/audit
 - Add migration
-- Relation: `CatalogOverride` → `Catalog`, `CatalogOverride` → `CatalogProduct`
+- Relations: `CatalogOverride` → `Catalog` + `CatalogProduct`; `ImportSnapshot` → `ImportOperation` + `Catalog`
+- Note: rollback feature not built now — snapshot is stored so V3 can use it later
 
 ### P1.2 — Engine: override merger
 - Create `src/engine/overrides/merge.ts`
@@ -60,10 +64,15 @@
 - `POST /catalogs/:id/issues/:issueId/ignore` — mark issue ignored
 - Update issue status in DB
 
-### P1.9 — API: preview with overrides
+### P1.9 — API: preview with overrides + import snapshot
 - `GET /catalogs/:id/preview` — return resolved catalog (source + overrides merged)
 - Products endpoint also supports `?resolved=true` to return merged data
-- Used by the import step — import reads resolved data, not raw source
+- At import time:
+  1. Merge source + overrides → resolved catalog
+  2. Create `ImportSnapshot` with the collapsed diff (all applied overrides as JSON)
+  3. Clean up `catalog_overrides` for this catalog (temporary edits no longer needed)
+  4. Import reads from resolved data
+- Snapshot is permanent — kept for future rollback/audit (not built now)
 
 ### P1.10 — API: undo
 - `DELETE /catalogs/:id/overrides/:overrideId` — remove a single edit
