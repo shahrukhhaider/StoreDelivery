@@ -369,3 +369,6 @@ async function writeOneProduct(
     };
   }
 }
+
+/** Exported for testing */
+export { buildProductSetInput as _buildProductSetInput, buildProductOptions as _buildProductOptions };
