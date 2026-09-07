@@ -13,6 +13,7 @@ import { getLogger } from "../logger.js";
 import { getShopId } from "./middleware.js";
 import { applyOverrides, computeDiff, type Override } from "../../engine/overrides/merge.js";
 import { detectAllAutoFixes } from "../../engine/overrides/auto-fix.js";
+import { classifyIssueType } from "../../engine/overrides/issue-filter.js";
 import { validateCatalog } from "../../engine/validation/validation-engine.js";
 import type { CatalogProduct } from "../../shared/types/catalog.js";
 
@@ -803,16 +804,6 @@ async function processBulkEditAsync(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function classifyIssueType(code: string): string {
-  if (code.includes("MISSING")) return "missing_value";
-  if (code.includes("DUPLICATE")) return "duplicate";
-  if (code.includes("MALFORMED") || code.includes("INVALID") || code.includes("SUSPICIOUS")) return "invalid_value";
-  if (code.includes("VARIANT") || code.includes("NO_VARIANTS")) return "variant_grouping";
-  if (code.includes("IMAGE")) return "image";
-  if (code.includes("EMPTY_OPTION")) return "variant_grouping";
-  return "other";
-}
 
 function getNestedValue(obj: unknown, path: string): unknown {
   const segments = path.split(/[.[\]]+/).filter(Boolean);
