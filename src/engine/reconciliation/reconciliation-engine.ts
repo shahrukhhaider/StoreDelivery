@@ -191,30 +191,34 @@ function collectEvidence(
     // SKU match (strongest variant evidence)
     if (variant.sku && variant.sku.trim()) {
       const key = variant.sku.toLowerCase().trim();
-      const match = index.skus.get(key);
-      if (match) {
-        evidence.push({
-          type: "sku",
-          sourceValue: variant.sku,
-          shopifyProductId: match.productId,
-          shopifyVariantId: match.variantId,
-          confidence: "HIGH",
-        });
+      const matches = index.skus.get(key);
+      if (matches) {
+        for (const match of matches) {
+          evidence.push({
+            type: "sku",
+            sourceValue: variant.sku,
+            shopifyProductId: match.productId,
+            shopifyVariantId: match.variantId,
+            confidence: "HIGH",
+          });
+        }
       }
     }
 
     // Barcode match
     if (variant.barcode && variant.barcode.trim()) {
       const key = variant.barcode.toLowerCase().trim();
-      const match = index.barcodes.get(key);
-      if (match) {
-        evidence.push({
-          type: "barcode",
-          sourceValue: variant.barcode,
-          shopifyProductId: match.productId,
-          shopifyVariantId: match.variantId,
-          confidence: "HIGH",
-        });
+      const matches = index.barcodes.get(key);
+      if (matches) {
+        for (const match of matches) {
+          evidence.push({
+            type: "barcode",
+            sourceValue: variant.barcode,
+            shopifyProductId: match.productId,
+            shopifyVariantId: match.variantId,
+            confidence: "HIGH",
+          });
+        }
       }
     }
   }

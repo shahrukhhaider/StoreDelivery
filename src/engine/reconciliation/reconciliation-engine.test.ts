@@ -69,7 +69,7 @@ describe("classifyProducts — persisted mapping", () => {
     const mappings = new Map([["PROD-001", mapping("PROD-001", "gid://shopify/Product/1")]]);
     // Shopify has the same SKU pointing to a different product
     const index = emptyIndex();
-    index.skus.set("sku-001", { productId: "gid://shopify/Product/999", variantId: "gid://shopify/ProductVariant/999" });
+    index.skus.set("sku-001", [{ productId: "gid://shopify/Product/999", variantId: "gid://shopify/ProductVariant/999" }]);
 
     const { classifications } = classifyProducts({
       products: [product()],
@@ -129,8 +129,8 @@ describe("classifyProducts — Shopify bootstrap", () => {
       ],
     });
     const index = emptyIndex();
-    index.skus.set("sku-a", { productId: "gid://P/1", variantId: "gid://V/1" });
-    index.skus.set("sku-b", { productId: "gid://P/1", variantId: "gid://V/2" });
+    index.skus.set("sku-a", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
+    index.skus.set("sku-b", [{ productId: "gid://P/1", variantId: "gid://V/2" }]);
 
     const { classifications } = classifyProducts({
       products: [p],
@@ -151,7 +151,7 @@ describe("classifyProducts — Shopify bootstrap", () => {
       ],
     });
     const index = emptyIndex();
-    index.skus.set("sku-only", { productId: "gid://P/1", variantId: "gid://V/1" });
+    index.skus.set("sku-only", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
 
     const { classifications } = classifyProducts({
       products: [p],
@@ -173,7 +173,7 @@ describe("classifyProducts — Shopify bootstrap", () => {
       ],
     });
     const index = emptyIndex();
-    index.skus.set("sku-match", { productId: "gid://P/1", variantId: "gid://V/1" });
+    index.skus.set("sku-match", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
 
     const { classifications } = classifyProducts({
       products: [p],
@@ -193,8 +193,8 @@ describe("classifyProducts — Shopify bootstrap", () => {
       ],
     });
     const index = emptyIndex();
-    index.skus.set("sku-x", { productId: "gid://P/1", variantId: "gid://V/1" });
-    index.barcodes.set("bc-x", { productId: "gid://P/1", variantId: "gid://V/1" });
+    index.skus.set("sku-x", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
+    index.barcodes.set("bc-x", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
 
     const { classifications } = classifyProducts({
       products: [p],
@@ -215,8 +215,8 @@ describe("classifyProducts — Shopify bootstrap", () => {
       ],
     });
     const index = emptyIndex();
-    index.skus.set("sku-a", { productId: "gid://P/1", variantId: "gid://V/1" });
-    index.skus.set("sku-b", { productId: "gid://P/2", variantId: "gid://V/2" }); // different product!
+    index.skus.set("sku-a", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
+    index.skus.set("sku-b", [{ productId: "gid://P/2", variantId: "gid://V/2" }]); // different product!
 
     const { classifications } = classifyProducts({
       products: [p],
@@ -237,7 +237,7 @@ describe("classifyProducts — Shopify bootstrap", () => {
       ],
     });
     const index = emptyIndex();
-    index.barcodes.set("0123456789", { productId: "gid://P/1", variantId: "gid://V/1" });
+    index.barcodes.set("0123456789", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
 
     const { classifications } = classifyProducts({
       products: [p],
@@ -334,8 +334,8 @@ describe("classifyProducts — summary", () => {
     const mappings = new Map([["MAPPED-1", mapping("MAPPED-1", "gid://P/1")]]);
     const index = emptyIndex();
     // REVIEW-1: SKUs point to different products → ambiguous
-    index.skus.set("r-sku-a", { productId: "gid://P/10", variantId: "gid://V/10" });
-    index.skus.set("r-sku-b", { productId: "gid://P/11", variantId: "gid://V/11" });
+    index.skus.set("r-sku-a", [{ productId: "gid://P/10", variantId: "gid://V/10" }]);
+    index.skus.set("r-sku-b", [{ productId: "gid://P/11", variantId: "gid://V/11" }]);
 
     const { summary } = classifyProducts({
       products,
@@ -372,7 +372,7 @@ describe("classifyProducts — edge cases", () => {
       variants: [{ sourceKey: "V1", sku: "   ", options: {}, price: "10", sourceData: {} }],
     });
     const index = emptyIndex();
-    index.skus.set("   ", { productId: "gid://P/1", variantId: "gid://V/1" });
+    index.skus.set("   ", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
 
     const { classifications } = classifyProducts({
       products: [p],
@@ -441,7 +441,7 @@ describe("classifyProducts — guard contract (empty snapshot)", () => {
   it("partial snapshot: matches products with evidence, marks unmatched as NEW_PRODUCT", () => {
     // Simulates a snapshot where only some products are present
     const index = emptyIndex();
-    index.skus.set("sku-known", { productId: "gid://P/1", variantId: "gid://V/1" });
+    index.skus.set("sku-known", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
 
     const products = [
       product({
@@ -473,12 +473,14 @@ describe("classifyProducts — guard contract (empty snapshot)", () => {
 // ---------------------------------------------------------------------------
 
 describe("classifyProducts — index collision scenarios", () => {
-  it("handles duplicate SKU in Shopify (first entry wins in index, but is still valid)", () => {
-    // If two Shopify products have the same SKU, the index stores the first one.
-    // This is expected per spec: collisions should produce candidates and trigger review.
+  it("duplicate SKU in Shopify: two products share same SKU → NEEDS_REVIEW", () => {
+    // Two Shopify products have the same SKU — index now stores both.
+    // The engine should see evidence pointing to multiple products → NEEDS_REVIEW
     const index = emptyIndex();
-    index.skus.set("sku-dup", { productId: "gid://P/1", variantId: "gid://V/1" });
-    // Second product with same SKU is not in the map (Map dedup)
+    index.skus.set("sku-dup", [
+      { productId: "gid://P/1", variantId: "gid://V/1" },
+      { productId: "gid://P/2", variantId: "gid://V/2" },
+    ]);
 
     const p = product({
       variants: [{ sourceKey: "V1", sku: "SKU-DUP", options: {}, price: "10", sourceData: {} }],
@@ -490,15 +492,41 @@ describe("classifyProducts — index collision scenarios", () => {
       shopifyIndex: index,
     });
 
-    // Single match → should classify as LIKELY_EXISTING (single variant product)
+    // Multiple candidates for same SKU → ambiguous → NEEDS_REVIEW
+    expect(classifications[0].classification).toBe("NEEDS_REVIEW");
+    expect(classifications[0].confidence).toBe("LOW");
+    expect(classifications[0].proposedAction).toBe("SKIP");
+    expect(classifications[0].matchEvidence).toHaveLength(2);
+  });
+
+  it("duplicate SKU in Shopify but all on same product → LIKELY_EXISTING (not ambiguous)", () => {
+    // Same SKU on two variants of the SAME Shopify product — not ambiguous
+    const index = emptyIndex();
+    index.skus.set("sku-shared", [
+      { productId: "gid://P/1", variantId: "gid://V/1" },
+      { productId: "gid://P/1", variantId: "gid://V/2" },
+    ]);
+
+    const p = product({
+      variants: [{ sourceKey: "V1", sku: "SKU-SHARED", options: {}, price: "10", sourceData: {} }],
+    });
+
+    const { classifications } = classifyProducts({
+      products: [p],
+      existingMappings: emptyMappings(),
+      shopifyIndex: index,
+    });
+
+    // Both entries point to same product → not ambiguous → LIKELY_EXISTING
     expect(classifications[0].classification).toBe("LIKELY_EXISTING");
+    expect(classifications[0].confidence).toBe("HIGH");
     expect(classifications[0].matchedShopifyProductId).toBe("gid://P/1");
   });
 
   it("handles product with both SKU and barcode pointing to same Shopify product", () => {
     const index = emptyIndex();
-    index.skus.set("sku-x", { productId: "gid://P/1", variantId: "gid://V/1" });
-    index.barcodes.set("bc-x", { productId: "gid://P/1", variantId: "gid://V/1" });
+    index.skus.set("sku-x", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
+    index.barcodes.set("bc-x", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
 
     const p = product({
       variants: [
@@ -519,8 +547,8 @@ describe("classifyProducts — index collision scenarios", () => {
 
   it("handles product with SKU and barcode pointing to DIFFERENT Shopify products → ambiguous", () => {
     const index = emptyIndex();
-    index.skus.set("sku-a", { productId: "gid://P/1", variantId: "gid://V/1" });
-    index.barcodes.set("bc-a", { productId: "gid://P/2", variantId: "gid://V/2" });
+    index.skus.set("sku-a", [{ productId: "gid://P/1", variantId: "gid://V/1" }]);
+    index.barcodes.set("bc-a", [{ productId: "gid://P/2", variantId: "gid://V/2" }]);
 
     const p = product({
       variants: [

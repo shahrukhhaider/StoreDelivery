@@ -126,10 +126,10 @@ export type PersistedVariantMapping = {
 
 /** Shopify store identifiers, pre-fetched for matching. */
 export type ShopifyIdentityIndex = {
-  /** lowercase SKU → { shopifyProductId, shopifyVariantId } */
-  skus: Map<string, { productId: string; variantId: string }>;
-  /** lowercase barcode → { shopifyProductId, shopifyVariantId } */
-  barcodes: Map<string, { productId: string; variantId: string }>;
+  /** lowercase SKU → all matching Shopify variants (may have duplicates across products) */
+  skus: Map<string, Array<{ productId: string; variantId: string }>>;
+  /** lowercase barcode → all matching Shopify variants */
+  barcodes: Map<string, Array<{ productId: string; variantId: string }>>;
   /** lowercase title → shopifyProductId */
   titles: Map<string, string>;
 };

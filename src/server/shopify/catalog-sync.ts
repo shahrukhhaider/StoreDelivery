@@ -377,8 +377,8 @@ export async function buildIdentityIndexFromSnapshots(
     },
   });
 
-  const skus = new Map<string, { productId: string; variantId: string }>();
-  const barcodes = new Map<string, { productId: string; variantId: string }>();
+  const skus = new Map<string, Array<{ productId: string; variantId: string }>>();
+  const barcodes = new Map<string, Array<{ productId: string; variantId: string }>>();
   const titles = new Map<string, string>();
 
   for (const product of products) {
@@ -387,21 +387,21 @@ export async function buildIdentityIndexFromSnapshots(
     for (const variant of product.variants) {
       if (variant.sku) {
         const key = variant.sku.toLowerCase().trim();
-        if (!skus.has(key)) {
-          skus.set(key, {
-            productId: variant.shopifyProductId,
-            variantId: variant.shopifyVariantId,
-          });
-        }
+        const existing = skus.get(key) ?? [];
+        existing.push({
+          productId: variant.shopifyProductId,
+          variantId: variant.shopifyVariantId,
+        });
+        skus.set(key, existing);
       }
       if (variant.barcode) {
         const key = variant.barcode.toLowerCase().trim();
-        if (!barcodes.has(key)) {
-          barcodes.set(key, {
-            productId: variant.shopifyProductId,
-            variantId: variant.shopifyVariantId,
-          });
-        }
+        const existing = barcodes.get(key) ?? [];
+        existing.push({
+          productId: variant.shopifyProductId,
+          variantId: variant.shopifyVariantId,
+        });
+        barcodes.set(key, existing);
       }
     }
   }

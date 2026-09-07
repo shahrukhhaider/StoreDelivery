@@ -187,13 +187,13 @@ export function detectDuplicates(
 export async function fetchShopifyIdentityIndex(
   client: ShopifyGraphQLClient,
 ): Promise<{
-  skus: Map<string, { productId: string; variantId: string }>;
-  barcodes: Map<string, { productId: string; variantId: string }>;
+  skus: Map<string, Array<{ productId: string; variantId: string }>>;
+  barcodes: Map<string, Array<{ productId: string; variantId: string }>>;
   titles: Map<string, string>;
 }> {
   const logger = getLogger();
-  const skus = new Map<string, { productId: string; variantId: string }>();
-  const barcodes = new Map<string, { productId: string; variantId: string }>();
+  const skus = new Map<string, Array<{ productId: string; variantId: string }>>();
+  const barcodes = new Map<string, Array<{ productId: string; variantId: string }>>();
   const titles = new Map<string, string>();
 
   let cursor: string | null = null;
@@ -229,10 +229,16 @@ export async function fetchShopifyIdentityIndex(
         const variant = variantEdge.node;
         const variantId = variant.id;
         if (variant.sku) {
-          skus.set(variant.sku.toLowerCase().trim(), { productId, variantId });
+          const key = variant.sku.toLowerCase().trim();
+          const existing = skus.get(key) ?? [];
+          existing.push({ productId, variantId });
+          skus.set(key, existing);
         }
         if (variant.barcode) {
-          barcodes.set(variant.barcode.toLowerCase().trim(), { productId, variantId });
+          const key = variant.barcode.toLowerCase().trim();
+          const existing = barcodes.get(key) ?? [];
+          existing.push({ productId, variantId });
+          barcodes.set(key, existing);
         }
       }
     }
