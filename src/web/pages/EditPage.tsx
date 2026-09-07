@@ -432,7 +432,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
 
   return (
     <Page
-      title="Edit Catalog"
+      title="Edit Catalog Update"
       subtitle={`${total} products${overrideStats.productsWithOverrides > 0 ? ` · ${overrideStats.productsWithOverrides} edited` : ""}`}
       backAction={{ onAction: onBack }}
       primaryAction={{
