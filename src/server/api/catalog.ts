@@ -344,15 +344,37 @@ router.get("/:id/issues", async (req, res, next) => {
       return;
     }
 
-    // Re-validate products to get actual issue details
+    // Re-validate products with overrides applied to get actual issue details
     const products = await prisma.catalogProduct.findMany({
       where: { catalogId: catalog.id },
-      select: { sourceKey: true, status: true, normalizedJson: true },
+      select: { id: true, sourceKey: true, status: true, normalizedJson: true },
     });
 
+    // Load overrides for this catalog
+    const overrides = await prisma.catalogOverride.findMany({
+      where: { catalogId: catalog.id },
+    });
+    const overridesByProduct = new Map<string, Array<{ field: string; oldValue: unknown; newValue: unknown; source: string }>>();
+    for (const o of overrides) {
+      const list = overridesByProduct.get(o.productId) ?? [];
+      list.push({ field: o.field, oldValue: o.oldValue, newValue: o.newValue, source: o.source });
+      overridesByProduct.set(o.productId, list);
+    }
+
     const { validateCatalog } = await import("../../engine/validation/index.js");
+    const { applyOverrides } = await import("../../engine/overrides/merge.js");
+
     const catalogProducts = products.map(
-      (p: { normalizedJson: unknown }) => p.normalizedJson as unknown as import("../../shared/types/catalog.js").CatalogProduct,
+      (p: { id: string; normalizedJson: unknown }) => {
+        const source = p.normalizedJson as unknown as import("../../shared/types/catalog.js").CatalogProduct;
+        const productOverrides = (overridesByProduct.get(p.id) ?? []).map((o) => ({
+          field: o.field,
+          oldValue: o.oldValue,
+          newValue: o.newValue,
+          source: o.source as "user" | "bulk_rule" | "auto_fix",
+        }));
+        return applyOverrides(source, productOverrides);
+      },
     );
     const validationResult = validateCatalog(catalogProducts);
 
