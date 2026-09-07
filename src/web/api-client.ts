@@ -389,6 +389,9 @@ export type EditIssuesResponse = {
   summary: EditIssueSummary;
   typeCounts: Record<string, number>;
   severityCounts: Record<string, number>;
+  typeProductCounts: Record<string, number>;
+  severityProductCounts: Record<string, number>;
+  totalProducts: number;
 };
 
 export async function getEditIssues(

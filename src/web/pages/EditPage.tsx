@@ -184,6 +184,9 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   const [issues, setIssues] = useState<EditIssue[]>([]);
   const [products, setProducts] = useState<PreviewProduct[]>([]);
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
+  const [typeProductCounts, setTypeProductCounts] = useState<Record<string, number>>({});
+  const [severityProductCounts, setSeverityProductCounts] = useState<Record<string, number>>({});
+  const [totalProducts, setTotalProducts] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -239,6 +242,9 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       setSummary(issueRes.summary);
       setIssues(issueRes.issues);
       setTypeCounts(issueRes.typeCounts);
+      setTypeProductCounts(issueRes.typeProductCounts ?? {});
+      setSeverityProductCounts(issueRes.severityProductCounts ?? {});
+      setTotalProducts(issueRes.totalProducts ?? 0);
       setProducts(previewRes.products);
       setTotalPages(previewRes.totalPages);
       setTotal(previewRes.total);
@@ -370,14 +376,14 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
 
   // Tab content with counts
   const tabs = FILTER_TABS.map((tab) => {
-    let count: number | undefined;
-    if (tab.id === "all") count = summary?.total ?? 0;
-    else if (tab.id === "blocking") count = summary?.blocking ?? 0;
-    else if (tab.id === "warning") count = summary?.warning ?? 0;
-    else count = typeCounts[tab.id] ?? 0;
+    let count: number;
+    if (tab.id === "all") count = totalProducts;
+    else if (tab.id === "blocking") count = severityProductCounts["blocking"] ?? 0;
+    else if (tab.id === "warning") count = severityProductCounts["warning"] ?? 0;
+    else count = typeProductCounts[tab.id] ?? 0;
     return {
       ...tab,
-      content: `${tab.content}${count !== undefined ? ` (${count})` : ""}`,
+      content: `${tab.content} (${count})`,
     };
   });
 

@@ -98,13 +98,34 @@ router.get("/:id/edit/issues", async (req, res, next) => {
     const total = filtered.length;
     const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-    // Count by type and severity
+    // Count by type and severity — both issue counts and unique product counts
     const typeCounts: Record<string, number> = {};
     const severityCounts: Record<string, number> = {};
+    const typeProductKeys: Record<string, Set<string>> = {};
+    const severityProductKeys: Record<string, Set<string>> = {};
+
     for (const issue of validationResult.issues) {
       const t = classifyIssueType(issue.code);
       typeCounts[t] = (typeCounts[t] ?? 0) + 1;
       severityCounts[issue.severity] = (severityCounts[issue.severity] ?? 0) + 1;
+
+      // Track unique product keys per filter
+      if (issue.sourceKey) {
+        if (!typeProductKeys[t]) typeProductKeys[t] = new Set();
+        typeProductKeys[t].add(issue.sourceKey);
+        if (!severityProductKeys[issue.severity]) severityProductKeys[issue.severity] = new Set();
+        severityProductKeys[issue.severity].add(issue.sourceKey);
+      }
+    }
+
+    // Convert sets to counts
+    const typeProductCounts: Record<string, number> = {};
+    for (const [k, v] of Object.entries(typeProductKeys)) {
+      typeProductCounts[k] = v.size;
+    }
+    const severityProductCounts: Record<string, number> = {};
+    for (const [k, v] of Object.entries(severityProductKeys)) {
+      severityProductCounts[k] = v.size;
     }
 
     // Count overrides
@@ -135,6 +156,9 @@ router.get("/:id/edit/issues", async (req, res, next) => {
       },
       typeCounts,
       severityCounts,
+      typeProductCounts,
+      severityProductCounts,
+      totalProducts: products.length,
     });
   } catch (err) { next(err); }
 });
