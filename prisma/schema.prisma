@@ -70,6 +70,8 @@ model Catalog {
   fieldMappings   FieldMapping[]
   catalogProducts CatalogProduct[]
   importOperations ImportOperation[]
+  overrides       CatalogOverride[]
+  snapshots       ImportSnapshot[]
 
   @@index([shopId])
   @@map("catalogs")
@@ -118,7 +120,8 @@ model CatalogProduct {
   normalizedJson Json          @map("normalized_json")
   status         ProductStatus @default(pending)
 
-  catalog Catalog @relation(fields: [catalogId], references: [id])
+  catalog   Catalog           @relation(fields: [catalogId], references: [id])
+  overrides CatalogOverride[]
 
   @@index([catalogId])
   @@unique([catalogId, sourceKey])
@@ -153,6 +156,7 @@ model ImportOperation {
   shop    Shop         @relation(fields: [shopId], references: [id])
   catalog Catalog      @relation(fields: [catalogId], references: [id])
   items   ImportItem[]
+  snapshot ImportSnapshot?
 
   @@index([shopId])
   @@map("import_operations")
@@ -188,4 +192,52 @@ model ImportItem {
 
   @@index([importOperationId])
   @@map("import_items")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog Overrides — temporary draft edits (Inline Edit UX)
+// ---------------------------------------------------------------------------
+
+enum OverrideSource {
+  user
+  bulk_rule
+  auto_fix
+}
+
+model CatalogOverride {
+  id         String         @id @default(cuid())
+  catalogId  String         @map("catalog_id")
+  productId  String         @map("product_id")
+  field      String         // dot-path e.g. "title", "variants[0].price"
+  oldValue   Json?          @map("old_value")
+  newValue   Json           @map("new_value")
+  source     OverrideSource
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  catalog Catalog        @relation(fields: [catalogId], references: [id])
+  product CatalogProduct @relation(fields: [productId], references: [id])
+
+  @@index([catalogId])
+  @@index([productId])
+  @@index([catalogId, productId])
+  @@map("catalog_overrides")
+}
+
+// ---------------------------------------------------------------------------
+// Import Snapshots — permanent record of applied edits at import time
+// ---------------------------------------------------------------------------
+
+model ImportSnapshot {
+  id                  String          @id @default(cuid())
+  importOperationId   String          @unique @map("import_operation_id")
+  catalogId           String          @map("catalog_id")
+  appliedOverrides    Json            @map("applied_overrides") // collapsed diff
+  resolvedProductCount Int            @map("resolved_product_count")
+  createdAt           DateTime        @default(now()) @map("created_at")
+
+  importOperation ImportOperation @relation(fields: [importOperationId], references: [id])
+  catalog         Catalog         @relation(fields: [catalogId], references: [id])
+
+  @@index([catalogId])
+  @@map("import_snapshots")
 }

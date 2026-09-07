@@ -2,7 +2,7 @@
  * Root app component — Polaris-wrapped with state-machine routing.
  *
  * Nav: Home (upload/intro) | Import History
- * Flow: Home → Upload → Mapping → Preview → Results
+ * Flow: Home → Upload → Mapping → Edit → Preview → Results
  */
 
 import React, { useState, useCallback } from "react";
@@ -12,6 +12,7 @@ import enTranslations from "@shopify/polaris/locales/en.json";
 import { WelcomePage } from "./pages/WelcomePage.js";
 import { UploadPage } from "./pages/UploadPage.js";
 import { MappingPage } from "./pages/MappingPage.js";
+import { EditPage } from "./pages/EditPage.js";
 import { PreviewPage } from "./pages/PreviewPage.js";
 import { ResultsPage } from "./pages/ResultsPage.js";
 import { HistoryPage } from "./pages/HistoryPage.js";
@@ -20,6 +21,7 @@ type Route =
   | { page: "home" }
   | { page: "upload" }
   | { page: "mapping"; uploadId: string; catalogId: string }
+  | { page: "edit"; uploadId: string; catalogId: string }
   | { page: "preview"; uploadId: string; catalogId: string }
   | { page: "results"; operationId: string; uploadId?: string; catalogId?: string }
   | { page: "history" };
@@ -41,6 +43,10 @@ export function App() {
     },
     [],
   );
+
+  const navigateToEdit = useCallback((catalogId: string, uploadId?: string) => {
+    setRoute({ page: "edit", catalogId, uploadId: uploadId ?? "" });
+  }, []);
 
   const navigateToPreview = useCallback((catalogId: string, uploadId?: string) => {
     setRoute({ page: "preview", catalogId, uploadId: uploadId ?? "" });
@@ -87,8 +93,17 @@ export function App() {
       content = (
         <MappingPage
           catalogId={route.catalogId}
-          onComplete={(catalogId) => navigateToPreview(catalogId, route.uploadId)}
+          onComplete={(catalogId) => navigateToEdit(catalogId, route.uploadId)}
           onBack={navigateToUpload}
+        />
+      );
+      break;
+    case "edit":
+      content = (
+        <EditPage
+          catalogId={route.catalogId}
+          onBack={() => navigateToMapping(route.uploadId, route.catalogId)}
+          onImport={(catalogId) => navigateToPreview(catalogId, route.uploadId)}
         />
       );
       break;
@@ -96,7 +111,7 @@ export function App() {
       content = (
         <PreviewPage
           catalogId={route.catalogId}
-          onBack={() => navigateToMapping(route.uploadId, route.catalogId)}
+          onBack={() => navigateToEdit(route.catalogId, route.uploadId)}
           onExecute={(operationId) =>
             navigateToResults(operationId, route.uploadId, route.catalogId)
           }

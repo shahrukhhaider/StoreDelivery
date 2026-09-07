@@ -6,6 +6,7 @@ import { Router } from "express";
 import { uploadRouter } from "./upload.js";
 import { catalogRouter } from "./catalog.js";
 import { importRouter } from "./import.js";
+import { editRouter } from "./edit.js";
 import { shopScope } from "./middleware.js";
 
 const apiRouter = Router();
@@ -16,6 +17,7 @@ apiRouter.use(shopScope);
 // Mount route modules
 apiRouter.use("/uploads", uploadRouter);
 apiRouter.use("/catalogs", catalogRouter);
+apiRouter.use("/catalogs", editRouter);
 apiRouter.use("/imports", importRouter);
 
 /**

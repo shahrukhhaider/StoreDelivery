@@ -351,3 +351,168 @@ export type HistoryEntry = {
 export async function getHistory(): Promise<{ history: HistoryEntry[] }> {
   return request("/history");
 }
+
+// ---------------------------------------------------------------------------
+// Inline Edit API
+// ---------------------------------------------------------------------------
+
+// Issues (enhanced)
+export type EditIssue = {
+  code: string;
+  message: string;
+  severity: string;
+  sourceKey: string | null;
+  field: string | null;
+  type: string;
+};
+
+export type EditIssueSummary = {
+  total: number;
+  blocking: number;
+  warning: number;
+  info: number;
+  autoFixed: number;
+  overrideCount: number;
+};
+
+export type EditIssuesResponse = {
+  issues: EditIssue[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  summary: EditIssueSummary;
+  typeCounts: Record<string, number>;
+  severityCounts: Record<string, number>;
+};
+
+export async function getEditIssues(
+  catalogId: string,
+  options?: { type?: string; severity?: string; page?: number; pageSize?: number },
+): Promise<EditIssuesResponse> {
+  const params = new URLSearchParams();
+  if (options?.type) params.set("type", options.type);
+  if (options?.severity) params.set("severity", options.severity);
+  if (options?.page) params.set("page", String(options.page));
+  if (options?.pageSize) params.set("pageSize", String(options.pageSize));
+  const qs = params.toString();
+  return request(`/catalogs/${catalogId}/edit/issues${qs ? `?${qs}` : ""}`);
+}
+
+// Single product edit
+export type ProductEditResult = {
+  productId: string;
+  sourceKey: string;
+  source: unknown;
+  resolved: unknown;
+  overrides: Array<{ id: string; field: string; oldValue: unknown; newValue: unknown }>;
+  issues: Array<{ severity: string; code: string; message: string }>;
+  diff: Array<{ field: string; oldValue: unknown; newValue: unknown }>;
+};
+
+export async function editProduct(
+  catalogId: string,
+  productId: string,
+  edits: Array<{ field: string; value: unknown }>,
+): Promise<ProductEditResult> {
+  return request(`/catalogs/${catalogId}/edit/products/${productId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ edits }),
+  });
+}
+
+// Bulk edit
+export type BulkEditResult = {
+  affected: number;
+  invalid: number;
+  total: number;
+};
+
+export async function bulkEdit(
+  catalogId: string,
+  action: "set_value" | "replace_value" | "clear_value",
+  field: string,
+  value?: unknown,
+  filter?: { status?: string; sourceKeys?: string[] },
+  replaceFrom?: string,
+): Promise<BulkEditResult> {
+  return request(`/catalogs/${catalogId}/edit/bulk`, {
+    method: "POST",
+    body: JSON.stringify({ action, field, value, replaceFrom, filter }),
+  });
+}
+
+// Auto-fix
+export type AutoFixResult = {
+  totalFixed: number;
+  breakdown: Record<string, number>;
+  totalProducts: number;
+};
+
+export async function runAutoFix(catalogId: string): Promise<AutoFixResult> {
+  return request(`/catalogs/${catalogId}/edit/auto-fix`, { method: "POST" });
+}
+
+// Preview with overrides
+export type PreviewProduct = {
+  id: string;
+  sourceKey: string;
+  status: string;
+  source?: unknown;
+  resolved: unknown;
+  hasOverrides: boolean;
+  overrideCount: number;
+  diff: Array<{ field: string; oldValue: unknown; newValue: unknown }>;
+};
+
+export type EditPreviewResponse = {
+  catalogId: string;
+  products: PreviewProduct[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  overrideStats: { productsWithOverrides: number; totalOverrides: number };
+  validation: { blocking: number; warning: number; info: number };
+};
+
+export async function getEditPreview(
+  catalogId: string,
+  page = 1,
+  pageSize = 20,
+): Promise<EditPreviewResponse> {
+  return request(`/catalogs/${catalogId}/edit/preview?page=${page}&pageSize=${pageSize}`);
+}
+
+// Undo
+export async function undoOverride(catalogId: string, overrideId: string): Promise<{ status: string }> {
+  return request(`/catalogs/${catalogId}/edit/overrides/${overrideId}`, { method: "DELETE" });
+}
+
+export async function clearAllOverrides(
+  catalogId: string,
+  source?: string,
+): Promise<{ status: string; deleted: number }> {
+  const qs = source ? `?source=${source}` : "";
+  return request(`/catalogs/${catalogId}/edit/overrides${qs}`, { method: "DELETE" });
+}
+
+// Similar issues detection
+export type SimilarIssuesResponse = {
+  issueCode: string;
+  affectedCount: number;
+  affectedKeys: string[];
+  suggestedFix: { field: string; value: string; explanation: string } | null;
+  detectedFields: Array<{ label: string; value: string }>;
+};
+
+export async function findSimilarIssues(
+  catalogId: string,
+  issueCode: string,
+  field?: string,
+): Promise<SimilarIssuesResponse> {
+  return request(`/catalogs/${catalogId}/edit/similar`, {
+    method: "POST",
+    body: JSON.stringify({ issueCode, field }),
+  });
+}
