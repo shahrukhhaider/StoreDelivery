@@ -385,3 +385,158 @@ describe("classifyProducts — edge cases", () => {
     expect(classifications[0].matchEvidence).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Guard contract: engine produces NEW_PRODUCT with empty index
+// (proves the reconciliation guard in the service layer is necessary)
+// ---------------------------------------------------------------------------
+
+describe("classifyProducts — guard contract (empty snapshot)", () => {
+  it("classifies ALL unmapped products as NEW_PRODUCT when Shopify index is completely empty", () => {
+    const products = [
+      product({ sourceKey: "A", variants: [{ sourceKey: "V1", sku: "SKU-1", options: {}, price: "10", sourceData: {} }] }),
+      product({ sourceKey: "B", variants: [{ sourceKey: "V2", sku: "SKU-2", options: {}, price: "20", sourceData: {} }] }),
+      product({ sourceKey: "C", variants: [{ sourceKey: "V3", options: {}, price: "30", sourceData: {} }] }),
+    ];
+
+    const { classifications, summary } = classifyProducts({
+      products,
+      existingMappings: emptyMappings(),
+      shopifyIndex: emptyIndex(), // simulates no snapshot
+    });
+
+    // Without a snapshot, every unmapped product becomes NEW_PRODUCT
+    // This is why the service-layer guard must downgrade these to NEEDS_REVIEW
+    expect(summary.newProducts).toBe(3);
+    expect(summary.needsReview).toBe(0);
+    expect(classifications.every((c) => c.classification === "NEW_PRODUCT")).toBe(true);
+  });
+
+  it("preserves EXISTING_MAPPED even when Shopify index is empty", () => {
+    // Products with persisted mappings should not be affected by empty snapshot
+    const mappings = new Map([
+      ["MAPPED-1", mapping("MAPPED-1", "gid://shopify/Product/1")],
+      ["MAPPED-2", mapping("MAPPED-2", "gid://shopify/Product/2")],
+    ]);
+
+    const products = [
+      product({ sourceKey: "MAPPED-1" }),
+      product({ sourceKey: "MAPPED-2" }),
+      product({ sourceKey: "NEW-1" }),
+    ];
+
+    const { classifications, summary } = classifyProducts({
+      products,
+      existingMappings: mappings,
+      shopifyIndex: emptyIndex(),
+    });
+
+    expect(summary.existingMapped).toBe(2);
+    expect(summary.newProducts).toBe(1);
+    // Guard should only affect NEW-1, not the mapped products
+    const mapped = classifications.filter((c) => c.classification === "EXISTING_MAPPED");
+    expect(mapped).toHaveLength(2);
+  });
+
+  it("partial snapshot: matches products with evidence, marks unmatched as NEW_PRODUCT", () => {
+    // Simulates a snapshot where only some products are present
+    const index = emptyIndex();
+    index.skus.set("sku-known", { productId: "gid://P/1", variantId: "gid://V/1" });
+
+    const products = [
+      product({
+        sourceKey: "KNOWN",
+        variants: [{ sourceKey: "V1", sku: "SKU-KNOWN", options: {}, price: "10", sourceData: {} }],
+      }),
+      product({
+        sourceKey: "UNKNOWN",
+        variants: [{ sourceKey: "V2", sku: "SKU-UNKNOWN", options: {}, price: "20", sourceData: {} }],
+      }),
+    ];
+
+    const { classifications } = classifyProducts({
+      products,
+      existingMappings: emptyMappings(),
+      shopifyIndex: index,
+    });
+
+    const known = classifications.find((c) => c.sourceProductKey === "KNOWN")!;
+    const unknown = classifications.find((c) => c.sourceProductKey === "UNKNOWN")!;
+
+    expect(known.classification).toBe("LIKELY_EXISTING");
+    expect(unknown.classification).toBe("NEW_PRODUCT");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Matching indexes: collision handling (multiple candidates for same identifier)
+// ---------------------------------------------------------------------------
+
+describe("classifyProducts — index collision scenarios", () => {
+  it("handles duplicate SKU in Shopify (first entry wins in index, but is still valid)", () => {
+    // If two Shopify products have the same SKU, the index stores the first one.
+    // This is expected per spec: collisions should produce candidates and trigger review.
+    const index = emptyIndex();
+    index.skus.set("sku-dup", { productId: "gid://P/1", variantId: "gid://V/1" });
+    // Second product with same SKU is not in the map (Map dedup)
+
+    const p = product({
+      variants: [{ sourceKey: "V1", sku: "SKU-DUP", options: {}, price: "10", sourceData: {} }],
+    });
+
+    const { classifications } = classifyProducts({
+      products: [p],
+      existingMappings: emptyMappings(),
+      shopifyIndex: index,
+    });
+
+    // Single match → should classify as LIKELY_EXISTING (single variant product)
+    expect(classifications[0].classification).toBe("LIKELY_EXISTING");
+    expect(classifications[0].matchedShopifyProductId).toBe("gid://P/1");
+  });
+
+  it("handles product with both SKU and barcode pointing to same Shopify product", () => {
+    const index = emptyIndex();
+    index.skus.set("sku-x", { productId: "gid://P/1", variantId: "gid://V/1" });
+    index.barcodes.set("bc-x", { productId: "gid://P/1", variantId: "gid://V/1" });
+
+    const p = product({
+      variants: [
+        { sourceKey: "V1", sku: "SKU-X", barcode: "BC-X", options: {}, price: "10", sourceData: {} },
+      ],
+    });
+
+    const { classifications } = classifyProducts({
+      products: [p],
+      existingMappings: emptyMappings(),
+      shopifyIndex: index,
+    });
+
+    // 2 evidence pieces → HIGH confidence
+    expect(classifications[0].confidence).toBe("HIGH");
+    expect(classifications[0].matchEvidence).toHaveLength(2);
+  });
+
+  it("handles product with SKU and barcode pointing to DIFFERENT Shopify products → ambiguous", () => {
+    const index = emptyIndex();
+    index.skus.set("sku-a", { productId: "gid://P/1", variantId: "gid://V/1" });
+    index.barcodes.set("bc-a", { productId: "gid://P/2", variantId: "gid://V/2" });
+
+    const p = product({
+      variants: [
+        { sourceKey: "V1", sku: "SKU-A", barcode: "BC-A", options: {}, price: "10", sourceData: {} },
+      ],
+    });
+
+    const { classifications } = classifyProducts({
+      products: [p],
+      existingMappings: emptyMappings(),
+      shopifyIndex: index,
+    });
+
+    // Evidence points to 2 different products → NEEDS_REVIEW
+    expect(classifications[0].classification).toBe("NEEDS_REVIEW");
+    expect(classifications[0].confidence).toBe("LOW");
+    expect(classifications[0].matchedShopifyProductId).toBeNull();
+  });
+});
