@@ -382,10 +382,23 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
     const firstVariant = resolved.variants?.[0];
     const sourceFirstVariant = source.variants?.[0];
 
+    // Find issues for this product
+    const productIssues = issues.filter((i) => i.sourceKey === p.sourceKey);
+
     return (
       <IndexTable.Row id={p.id} key={p.id} position={index}>
         <IndexTable.Cell>
-          {statusBadge(p.status, p.hasOverrides)}
+          {productIssues.length > 0 ? (
+            <Button
+              size="slim"
+              tone={productIssues.some((i) => i.severity === "blocking") ? "critical" : undefined}
+              onClick={() => handleIssueClick(productIssues[0])}
+            >
+              Review ({String(productIssues.length)})
+            </Button>
+          ) : (
+            statusBadge(p.status, p.hasOverrides)
+          )}
         </IndexTable.Cell>
         <IndexTable.Cell>
           <Text as="span" variant="bodySm">{firstVariant?.sku ?? "—"}</Text>
@@ -555,34 +568,6 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
           </InlineStack>
         )}
 
-        {/* Issue Details — with Review button to open sidebar */}
-        {issues.length > 0 && (
-          <Card>
-            <BlockStack gap="200">
-              <Text as="h3" variant="headingSm">Issues</Text>
-              {issues.slice(0, 20).map((issue, i) => (
-                <InlineStack key={i} gap="200" align="space-between">
-                  <InlineStack gap="200" align="start">
-                    {severityBadge(issue.severity)}
-                    <Text as="span" variant="bodySm">
-                      <strong>{issue.code}</strong>
-                      {issue.sourceKey ? ` [${issue.sourceKey}]` : ""}
-                      : {issue.message}
-                    </Text>
-                  </InlineStack>
-                  <Button size="slim" onClick={() => handleIssueClick(issue)}>
-                    Review
-                  </Button>
-                </InlineStack>
-              ))}
-              {issues.length > 20 && (
-                <Text as="p" variant="bodySm" tone="subdued">
-                  …and {issues.length - 20} more issues
-                </Text>
-              )}
-            </BlockStack>
-          </Card>
-        )}
       </BlockStack>
 
       {/* Right sidebar overlay for issue resolution */}
