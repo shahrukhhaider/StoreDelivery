@@ -313,8 +313,10 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   }, []);
 
   const handleSidePanelResolved = useCallback(() => {
+    // Close the sidebar and reload data so counts, review buttons, and grid all update
+    setSelectedIssue(null);
+    setSimilarData(null);
     reload();
-    // Keep panel open so merchant can see the "Apply to all" option
   }, [reload]);
 
   // -------------------------------------------------------------------------
