@@ -48,7 +48,7 @@ export function IssueSidePanel({
   const [applying, setApplying] = useState(false);
   const [applyingAll, setApplyingAll] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [fieldsExpanded, setFieldsExpanded] = useState(false);
+  const [fieldsExpanded, setFieldsExpanded] = useState(true);
 
   const isTemplatePattern = suggestedFix?.pattern === "template" || suggestedFix?.pattern === "per_variant";
 
