@@ -26,6 +26,8 @@ model Shop {
   supplierProfiles SupplierProfile[]
   productMappings  ProductMapping[]
   catalogRuns      CatalogRun[]
+  shopifySyncs     ShopifyCatalogSync[]
+  shopifyProducts  ShopifyProductSnapshot[]
 
   @@map("shops")
 }
@@ -475,4 +477,83 @@ model RunItem {
   @@index([catalogRunId])
   @@unique([catalogRunId, sourceProductKey])
   @@map("run_items")
+}
+
+// ---------------------------------------------------------------------------
+// Shopify Catalog Sync — bootstrap read model
+//
+// Persists a snapshot of the merchant's existing Shopify products/variants
+// for matching during reconciliation. Only stores fields needed for identity.
+// ---------------------------------------------------------------------------
+
+enum SyncStatus {
+  NOT_SYNCED
+  SYNCING
+  READY
+  FAILED
+  STALE
+}
+
+model ShopifyCatalogSync {
+  id            String     @id @default(cuid())
+  shopId        String     @map("shop_id")
+  status        SyncStatus @default(NOT_SYNCED)
+  productCount  Int        @default(0) @map("product_count")
+  variantCount  Int        @default(0) @map("variant_count")
+  errorCount    Int        @default(0) @map("error_count")
+  errorMessage  String?    @map("error_message")
+  startedAt     DateTime   @default(now()) @map("started_at")
+  completedAt   DateTime?  @map("completed_at")
+
+  shop Shop @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])
+  @@index([shopId, status])
+  @@map("shopify_catalog_syncs")
+}
+
+model ShopifyProductSnapshot {
+  id                 String   @id @default(cuid())
+  shopId             String   @map("shop_id")
+  shopifyProductId   String   @map("shopify_product_id")
+  title              String
+  handle             String?
+  vendor             String?
+  status             String?  // active, draft, archived
+  updatedAtShopify   DateTime? @map("updated_at_shopify")
+  syncedAt           DateTime  @default(now()) @map("synced_at")
+
+  shop     Shop                      @relation(fields: [shopId], references: [id])
+  variants ShopifyVariantSnapshot[]
+
+  @@unique([shopId, shopifyProductId])
+  @@index([shopId])
+  @@index([shopId, handle])
+  @@map("shopify_product_snapshots")
+}
+
+model ShopifyVariantSnapshot {
+  id                 String   @id @default(cuid())
+  shopifyVariantId   String   @map("shopify_variant_id")
+  shopifyProductId   String   @map("shopify_product_id")
+  productSnapshotId  String   @map("product_snapshot_id")
+
+  sku                String?
+  barcode            String?
+
+  option1            String?
+  option2            String?
+  option3            String?
+
+  inventoryItemId    String?  @map("inventory_item_id")
+  updatedAtShopify   DateTime? @map("updated_at_shopify")
+  syncedAt           DateTime  @default(now()) @map("synced_at")
+
+  productSnapshot ShopifyProductSnapshot @relation(fields: [productSnapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([productSnapshotId, shopifyVariantId])
+  @@index([productSnapshotId])
+  @@index([sku])
+  @@index([barcode])
+  @@map("shopify_variant_snapshots")
 }
