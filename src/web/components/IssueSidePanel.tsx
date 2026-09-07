@@ -18,6 +18,7 @@ import {
   Banner,
   Spinner,
   Select,
+  Collapsible,
 } from "@shopify/polaris";
 import { bulkEdit, type EditIssue, type SimilarIssuesResponse } from "../api-client.js";
 
@@ -47,6 +48,7 @@ export function IssueSidePanel({
   const [applying, setApplying] = useState(false);
   const [applyingAll, setApplyingAll] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [fieldsExpanded, setFieldsExpanded] = useState(false);
 
   const isSkuPattern = suggestedFix?.pattern === "{sourceKey}-{index}";
 
@@ -143,16 +145,33 @@ export function IssueSidePanel({
 
         <Divider />
 
-        {/* Detected fields context */}
+        {/* Detected fields — collapsible */}
         {detectedFields && detectedFields.length > 0 && (
           <BlockStack gap="200">
-            <Text as="h4" variant="headingSm">Detected fields</Text>
-            {detectedFields.map((f, i) => (
-              <InlineStack key={i} gap="200">
-                <Text as="span" variant="bodySm" tone="subdued">{f.label}:</Text>
-                <Text as="span" variant="bodySm" fontWeight="semibold">{f.value}</Text>
-              </InlineStack>
-            ))}
+            <Button
+              variant="plain"
+              onClick={() => setFieldsExpanded(!fieldsExpanded)}
+              fullWidth
+              textAlign="left"
+            >
+              {fieldsExpanded ? "▾" : "▸"} Product details ({String(detectedFields.length)} fields)
+            </Button>
+            <Collapsible
+              open={fieldsExpanded}
+              id="detected-fields"
+              transition={{ duration: "200ms", timingFunction: "ease-in-out" }}
+            >
+              <Card>
+                <BlockStack gap="100">
+                  {detectedFields.map((f, i) => (
+                    <InlineStack key={i} gap="200" align="space-between">
+                      <Text as="span" variant="bodySm" tone="subdued">{f.label}</Text>
+                      <Text as="span" variant="bodySm" fontWeight="semibold">{f.value}</Text>
+                    </InlineStack>
+                  ))}
+                </BlockStack>
+              </Card>
+            </Collapsible>
             <Divider />
           </BlockStack>
         )}

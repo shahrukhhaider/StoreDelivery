@@ -766,16 +766,26 @@ router.post("/:id/edit/similar", async (req, res, next) => {
       };
     }
 
-    // Detect related fields from the first affected product (for context)
+    // Detect all fields from the first affected product (for context)
     const detectedFields: Array<{ label: string; value: string }> = [];
     if (affectedKeys.length > 0) {
       const firstAffected = resolvedProducts.find((p) => p.sourceKey === affectedKeys[0]);
       if (firstAffected) {
         const r = firstAffected.resolved;
-        if (r.variants?.[0]?.price) detectedFields.push({ label: "Price", value: r.variants[0].price });
-        if (r.variants?.[0]?.compareAtPrice) detectedFields.push({ label: "Compare At", value: r.variants[0].compareAtPrice });
-        if (r.variants?.[0]?.cost) detectedFields.push({ label: "Cost", value: r.variants[0].cost });
+        if (r.title) detectedFields.push({ label: "Title", value: r.title });
+        if (r.description) detectedFields.push({ label: "Description", value: r.description.slice(0, 100) + (r.description.length > 100 ? "…" : "") });
         if (r.vendor) detectedFields.push({ label: "Vendor", value: r.vendor });
+        if (r.productType) detectedFields.push({ label: "Product Type", value: r.productType });
+        if (r.tags?.length) detectedFields.push({ label: "Tags", value: r.tags.join(", ") });
+        if (r.variants?.[0]?.sku) detectedFields.push({ label: "SKU", value: r.variants[0].sku });
+        if (r.variants?.[0]?.barcode) detectedFields.push({ label: "Barcode", value: r.variants[0].barcode });
+        if (r.variants?.[0]?.price) detectedFields.push({ label: "Price", value: r.variants[0].price });
+        if (r.variants?.[0]?.compareAtPrice) detectedFields.push({ label: "Compare At Price", value: r.variants[0].compareAtPrice });
+        if (r.variants?.[0]?.cost) detectedFields.push({ label: "Cost", value: r.variants[0].cost });
+        if (r.variants?.[0]?.inventoryQuantity !== undefined) detectedFields.push({ label: "Inventory", value: String(r.variants[0].inventoryQuantity) });
+        if (r.variants?.[0]?.weight !== undefined) detectedFields.push({ label: "Weight", value: `${r.variants[0].weight} ${r.variants[0].weightUnit ?? ""}`.trim() });
+        if (r.variants?.length) detectedFields.push({ label: "Variants", value: String(r.variants.length) });
+        if (r.images?.length) detectedFields.push({ label: "Images", value: String(r.images.length) });
       }
     }
 

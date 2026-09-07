@@ -21,11 +21,6 @@ import {
   Spinner,
   Tabs,
   Tooltip,
-  Icon,
-  Modal,
-  Select,
-  Divider,
-  Box,
 } from "@shopify/polaris";
 import {
   getEditIssues,
@@ -33,7 +28,6 @@ import {
   editProduct,
   runAutoFix,
   clearAllOverrides,
-  bulkEdit,
   findSimilarIssues,
   type EditIssueSummary,
   type EditIssue,
@@ -196,14 +190,6 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
 
   // Auto-fix state
   const [autoFixResult, setAutoFixResult] = useState<AutoFixResult | null>(null);
-  const [autoFixing, setAutoFixing] = useState(false);
-
-  // Bulk edit modal
-  const [bulkModalOpen, setBulkModalOpen] = useState(false);
-  const [bulkField, setBulkField] = useState("vendor");
-  const [bulkValue, setBulkValue] = useState("");
-  const [bulkAction, setBulkAction] = useState<"set_value" | "replace_value" | "clear_value">("set_value");
-  const [bulkApplying, setBulkApplying] = useState(false);
 
   // Reset state
   const [resetting, setResetting] = useState(false);
@@ -260,6 +246,18 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
     loadData(page);
   }, [page, loadData]);
 
+  // Run auto-fix on first load (silently — only shows if it finds something)
+  useEffect(() => {
+    if (!autoFixResult) {
+      runAutoFix(catalogId).then((result) => {
+        if (result.totalFixed > 0) {
+          setAutoFixResult(result);
+          loadData(1);
+        }
+      }).catch(() => {});
+    }
+  }, [catalogId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Reload on tab change
   useEffect(() => {
     setPage(1);
@@ -269,31 +267,14 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   const reload = useCallback(() => loadData(page), [loadData, page]);
 
   // -------------------------------------------------------------------------
-  // Auto-fix
+  // Reset all edits
   // -------------------------------------------------------------------------
-
-  const handleAutoFix = useCallback(async () => {
-    setAutoFixing(true);
-    try {
-      const result = await runAutoFix(catalogId);
-      setAutoFixResult(result);
-      reload();
-    } catch {
-      // error
-    } finally {
-      setAutoFixing(false);
-    }
-  }, [catalogId, reload]);
 
   const handleUndoAutoFixes = useCallback(async () => {
     await clearAllOverrides(catalogId, "auto_fix");
     setAutoFixResult(null);
     reload();
   }, [catalogId, reload]);
-
-  // -------------------------------------------------------------------------
-  // Reset all edits
-  // -------------------------------------------------------------------------
 
   const handleResetAll = useCallback(async () => {
     setResetting(true);
@@ -307,24 +288,6 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       setResetting(false);
     }
   }, [catalogId, reload]);
-
-  // -------------------------------------------------------------------------
-  // Bulk edit
-  // -------------------------------------------------------------------------
-
-  const handleBulkApply = useCallback(async () => {
-    setBulkApplying(true);
-    try {
-      await bulkEdit(catalogId, bulkAction, bulkField, bulkValue);
-      setBulkModalOpen(false);
-      setBulkValue("");
-      reload();
-    } catch {
-      // error
-    } finally {
-      setBulkApplying(false);
-    }
-  }, [catalogId, bulkAction, bulkField, bulkValue, reload]);
 
   // -------------------------------------------------------------------------
   // Issue side panel
@@ -406,7 +369,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
               tone={productIssues.some((i) => i.severity === "blocking") ? "critical" : undefined}
               onClick={() => handleIssueClick(productIssues[0])}
             >
-              Review ({String(productIssues.length)})
+              Review
             </Button>
           ) : (
             statusBadge(p.status, p.hasOverrides)
@@ -465,66 +428,54 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
         onAction: () => onImport(catalogId),
         disabled: readyCount === 0,
       }}
-      secondaryActions={[
-        ...(hasEdits ? [{
+      secondaryActions={
+        hasEdits ? [{
           content: `Reset all edits (${overrideStats.totalOverrides})`,
           onAction: handleResetAll,
           loading: resetting,
           destructive: true,
-        }] : []),
-        {
-          content: "Bulk edit",
-          onAction: () => setBulkModalOpen(true),
-        },
-      ]}
+        }] : undefined
+      }
     >
       <BlockStack gap="400">
         {/* Issue Summary Banner */}
-        {summary && (summary.blocking > 0 || summary.warning > 0) && (
+        {summary && (
           <Card>
             <InlineStack gap="600">
               <BlockStack gap="100">
-                <Text as="p" variant="headingLg">{total}</Text>
+                <Text as="p" variant="headingLg">{totalProducts}</Text>
                 <Text as="p" variant="bodySm" tone="subdued">products</Text>
               </BlockStack>
-              {summary.blocking > 0 && (
+              {(severityProductCounts["blocking"] ?? 0) > 0 && (
                 <BlockStack gap="100">
-                  <Text as="p" variant="headingLg" tone="critical">{summary.blocking}</Text>
-                  <Text as="p" variant="bodySm" tone="subdued">blocking</Text>
+                  <Text as="p" variant="headingLg" tone="critical">{severityProductCounts["blocking"]}</Text>
+                  <Text as="p" variant="bodySm" tone="subdued">blocked</Text>
                 </BlockStack>
               )}
-              {summary.warning > 0 && (
+              {(severityProductCounts["warning"] ?? 0) > 0 && (
                 <BlockStack gap="100">
-                  <Text as="p" variant="headingLg" tone="caution">{summary.warning}</Text>
-                  <Text as="p" variant="bodySm" tone="subdued">warnings</Text>
+                  <Text as="p" variant="headingLg" tone="caution">{severityProductCounts["warning"]}</Text>
+                  <Text as="p" variant="bodySm" tone="subdued">with warnings</Text>
                 </BlockStack>
               )}
+              <BlockStack gap="100">
+                <Text as="p" variant="headingLg" tone="success">
+                  {totalProducts - (severityProductCounts["blocking"] ?? 0) - (severityProductCounts["warning"] ?? 0)}
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">ready</Text>
+              </BlockStack>
               {overrideStats.totalOverrides > 0 && (
                 <BlockStack gap="100">
-                  <Text as="p" variant="headingLg" tone="success">{overrideStats.totalOverrides}</Text>
-                  <Text as="p" variant="bodySm" tone="subdued">edits applied</Text>
+                  <Text as="p" variant="headingLg" tone="subdued">{overrideStats.totalOverrides}</Text>
+                  <Text as="p" variant="bodySm" tone="subdued">edits</Text>
                 </BlockStack>
               )}
             </InlineStack>
           </Card>
         )}
 
-        {/* Auto-fix */}
-        {!autoFixResult ? (
-          <Card>
-            <InlineStack align="space-between">
-              <BlockStack gap="100">
-                <Text as="h3" variant="headingSm">Auto-fix</Text>
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Automatically fix whitespace, currency symbols, weight units, and other safe corrections.
-                </Text>
-              </BlockStack>
-              <Button onClick={handleAutoFix} loading={autoFixing}>
-                Run auto-fix
-              </Button>
-            </InlineStack>
-          </Card>
-        ) : (
+        {/* Auto-fix — only show result after running, hide if nothing to fix */}
+        {autoFixResult && autoFixResult.totalFixed > 0 && (
           <Card>
             <InlineStack align="space-between">
               <BlockStack gap="100">
@@ -636,56 +587,6 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
         />
       )}
 
-      {/* Bulk Edit Modal */}
-      <Modal
-        open={bulkModalOpen}
-        onClose={() => setBulkModalOpen(false)}
-        title="Bulk Edit"
-        primaryAction={{
-          content: "Apply",
-          onAction: handleBulkApply,
-          loading: bulkApplying,
-        }}
-        secondaryActions={[
-          { content: "Cancel", onAction: () => setBulkModalOpen(false) },
-        ]}
-      >
-        <Modal.Section>
-          <BlockStack gap="300">
-            <Select
-              label="Action"
-              options={[
-                { label: "Set value", value: "set_value" },
-                { label: "Replace value", value: "replace_value" },
-                { label: "Clear value", value: "clear_value" },
-              ]}
-              value={bulkAction}
-              onChange={(v) => setBulkAction(v as typeof bulkAction)}
-            />
-            <Select
-              label="Field"
-              options={[
-                { label: "Title", value: "title" },
-                { label: "Vendor", value: "vendor" },
-                { label: "Product Type", value: "productType" },
-                { label: "Description", value: "description" },
-                { label: "Price (first variant)", value: "variants[0].price" },
-                { label: "SKU (first variant)", value: "variants[0].sku" },
-              ]}
-              value={bulkField}
-              onChange={setBulkField}
-            />
-            {bulkAction !== "clear_value" && (
-              <TextField
-                label={bulkAction === "replace_value" ? "Replace with" : "Value"}
-                value={bulkValue}
-                onChange={setBulkValue}
-                autoComplete="off"
-              />
-            )}
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
     </Page>
   );
 }
