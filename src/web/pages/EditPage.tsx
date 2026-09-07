@@ -218,7 +218,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
     setLoading(true);
     try {
       const selectedTab = FILTER_TABS[activeTab];
-      const issueOpts: { type?: string; severity?: string; page?: number } = { page: p };
+      const issueOpts: { type?: string; severity?: string; page?: number; pageSize?: number } = { page: 1, pageSize: 100 };
 
       // Map tab to filter
       if (selectedTab.id === "blocking") issueOpts.severity = "blocking";
@@ -233,9 +233,23 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       setSummary(issueRes.summary);
       setIssues(issueRes.issues);
       setTypeCounts(issueRes.typeCounts);
-      setProducts(previewRes.products);
+
+      // Filter products to match the active tab
+      let filteredProducts = previewRes.products;
+
+      if (selectedTab.id !== "all") {
+        // Get source keys of products that have matching issues
+        const affectedKeys = new Set(
+          issueRes.issues.map((i: EditIssue) => i.sourceKey).filter(Boolean),
+        );
+        filteredProducts = previewRes.products.filter(
+          (p: PreviewProduct) => affectedKeys.has(p.sourceKey),
+        );
+      }
+
+      setProducts(filteredProducts);
       setTotalPages(previewRes.totalPages);
-      setTotal(previewRes.total);
+      setTotal(filteredProducts.length);
       setOverrideStats(previewRes.overrideStats);
     } catch {
       // handle error silently
