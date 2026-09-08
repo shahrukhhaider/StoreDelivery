@@ -12,8 +12,8 @@
 import { getPrisma } from "../db.js";
 import { getLogger } from "../logger.js";
 import { ShopifyGraphQLClient } from "../shopify/graphql-client.js";
-import { buildIdentityIndexFromSnapshots, hasReadySnapshot, syncShopifyCatalog } from "../shopify/catalog-sync.js";
-import { classifyProducts, applySnapshotGuard, type ClassifyProductsInput } from "../../engine/reconciliation/reconciliation-engine.js";
+import { fetchShopifyIdentityIndex } from "../shopify/duplicate-detector.js";
+import { classifyProducts, type ClassifyProductsInput } from "../../engine/reconciliation/reconciliation-engine.js";
 import { computeProductFingerprint } from "../../engine/reconciliation/product-fingerprint.js";
 import { computeProductDiff } from "../../engine/reconciliation/diff-engine.js";
 import { computeVariantFingerprint } from "../../engine/sku/variant-fingerprint.js";
@@ -83,163 +83,49 @@ export async function runReconciliation(
     mappingCount: existingMappings.size,
   });
 
-  // Step 3: Build Shopify identity index from local snapshots.
-  // Always refresh the snapshot before reconciliation to capture products
-  // created in previous imports. A stale snapshot causes false NEW_PRODUCT
-  // classifications and duplicate creation.
-  logger.info("Refreshing Shopify catalog snapshot before reconciliation", { shopId });
-  let snapshotReady = false;
-  try {
-    const syncResult = await syncShopifyCatalog(shopId, client);
-    snapshotReady = syncResult.status === "READY";
-    logger.info("Shopify snapshot refreshed", {
-      shopId,
-      status: syncResult.status,
-      productCount: syncResult.productCount,
-      variantCount: syncResult.variantCount,
-    });
-  } catch (err) {
-    // If sync fails, try to use an existing snapshot
-    snapshotReady = await hasReadySnapshot(shopId);
-    if (snapshotReady) {
-      logger.warn("Snapshot refresh failed, using existing snapshot", {
-        shopId,
-        error: (err as Error).message,
-      });
-    } else {
-      logger.error("No Shopify snapshot available — reconciliation guard will block new product creation", {
-        shopId,
-        error: (err as Error).message,
-      });
-    }
-  }
+  // Step 3: Fetch Shopify identity index from live API
+  // Shopify is the source of truth — always query live to avoid stale data.
+  // The GraphQL client handles rate limiting and staggered retries.
+  logger.info("Fetching Shopify identity index from live API", { shopId });
+  const shopifyIndex: ShopifyIdentityIndex = await fetchShopifyIdentityIndex(client);
 
-  if (!snapshotReady) {
-    logger.warn("No valid Shopify catalog snapshot — new product classification will be blocked", { shopId });
-  }
-
-  const shopifyIndex: ShopifyIdentityIndex = snapshotReady
-    ? await buildIdentityIndexFromSnapshots(shopId)
-    : { skus: new Map(), barcodes: new Map(), titles: new Map() };
+  logger.info("Shopify identity index loaded", {
+    shopId,
+    skus: shopifyIndex.skus.size,
+    barcodes: shopifyIndex.barcodes.size,
+    titles: shopifyIndex.titles.size,
+  });
 
   // Step 4: Classify via pure engine
-  const engineResult = classifyProducts({
+  const { classifications, summary } = classifyProducts({
     products,
     existingMappings,
     shopifyIndex,
   });
 
-  // Step 4b: Apply reconciliation guard
-  // Hard invariant: if no valid snapshot, downgrade NEW_PRODUCT → NEEDS_REVIEW
-  const { classifications, summary, downgraded } = applySnapshotGuard(
-    engineResult.classifications,
-    snapshotReady,
-  );
-
-  if (downgraded > 0) {
-    logger.warn("Downgraded NEW_PRODUCT classifications due to missing snapshot", {
-      downgraded,
-      summary,
-    });
-  }
-
-  // Step 5: Compute diffs for EXISTING_MAPPED products → split into UPDATE_REVIEW vs NO_CHANGE
+  // Step 5: For EXISTING_MAPPED products, classify as NO_CHANGE for now.
+  // Diffs will be computed on-demand from the live Shopify API when the
+  // merchant opens the update review page — not during import.
   const diffs: ProductDiff[] = [];
-  let finalClassifications = classifications;
-  let finalSummary = summary;
-
-  const mappedClassifications = classifications.filter(
-    (c) => c.classification === "EXISTING_MAPPED" && c.matchedShopifyProductId,
-  );
-
-  if (mappedClassifications.length > 0 && snapshotReady) {
-    // Load snapshots for mapped Shopify products
-    const shopifyProductIds = mappedClassifications
-      .map((c) => c.matchedShopifyProductId!)
-      .filter(Boolean);
-
-    const snapshots = await prisma.shopifyProductSnapshot.findMany({
-      where: {
-        shopId,
-        shopifyProductId: { in: shopifyProductIds },
-      },
-      include: {
-        variants: true,
-      },
-    });
-
-    const snapshotByProductId = new Map(
-      snapshots.map((s) => [s.shopifyProductId, s]),
-    );
-
-    // Build a product lookup for supplier data
-    const productByKey = new Map(products.map((p) => [p.sourceKey, p]));
-
-    // Compute diffs and reclassify
-    finalClassifications = classifications.map((c) => {
-      if (c.classification !== "EXISTING_MAPPED" || !c.matchedShopifyProductId) return c;
-
-      const snapshot = snapshotByProductId.get(c.matchedShopifyProductId);
-      const supplierProduct = productByKey.get(c.sourceProductKey);
-      if (!snapshot || !supplierProduct) return c;
-
-      // Load variant mappings for this product
-      const productMapping = existingMappings.get(c.sourceProductKey);
-      const variantMappings = productMapping?.variants ?? [];
-
-      const diff = computeProductDiff(
-        supplierProduct,
-        {
-          shopifyProductId: snapshot.shopifyProductId,
-          title: snapshot.title,
-          handle: snapshot.handle,
-          vendor: snapshot.vendor,
-          status: snapshot.status,
-        },
-        snapshot.variants.map((v) => ({
-          shopifyVariantId: v.shopifyVariantId,
-          shopifyProductId: v.shopifyProductId,
-          sku: v.sku,
-          barcode: v.barcode,
-          option1: v.option1,
-          option2: v.option2,
-          option3: v.option3,
-        })),
-        variantMappings,
-      );
-
-      if (diff.hasChanges) {
-        diffs.push(diff);
-        return {
-          ...c,
-          classification: "UPDATE_REVIEW" as const,
-          proposedAction: "UPDATE_PRODUCT" as const,
-        };
-      }
-
+  const finalClassifications = classifications.map((c) => {
+    if (c.classification === "EXISTING_MAPPED") {
       return {
         ...c,
         classification: "NO_CHANGE" as const,
         proposedAction: "NO_CHANGE" as const,
       };
-    });
+    }
+    return c;
+  });
 
-    // Recompute summary after reclassification
-    finalSummary = {
-      totalProducts: finalClassifications.length,
-      existingMapped: finalClassifications.filter((c) => c.classification === "EXISTING_MAPPED").length,
-      likelyExisting: finalClassifications.filter((c) => c.classification === "LIKELY_EXISTING").length,
-      newProducts: finalClassifications.filter((c) => c.classification === "NEW_PRODUCT").length,
-      needsReview: finalClassifications.filter((c) => c.classification === "NEEDS_REVIEW").length,
-      noChange: finalClassifications.filter((c) => c.classification === "NO_CHANGE").length,
-    };
-
-    logger.info("Diff computation complete", {
-      mapped: mappedClassifications.length,
-      updateReview: diffs.length,
-      noChange: mappedClassifications.length - diffs.length,
-    });
-  }
+  const finalSummary = {
+    totalProducts: finalClassifications.length,
+    existingMapped: finalClassifications.filter((c) => c.classification === "EXISTING_MAPPED").length,
+    likelyExisting: finalClassifications.filter((c) => c.classification === "LIKELY_EXISTING").length,
+    newProducts: finalClassifications.filter((c) => c.classification === "NEW_PRODUCT").length,
+    needsReview: finalClassifications.filter((c) => c.classification === "NEEDS_REVIEW").length,
+    noChange: finalClassifications.filter((c) => c.classification === "NO_CHANGE").length,
+  };
 
   // Step 6: Create CatalogRun + RunItems
   const catalogRun = await prisma.catalogRun.create({
