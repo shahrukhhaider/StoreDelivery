@@ -3,13 +3,12 @@
  *
  * Pure function. No DB access, no API calls.
  *
- * Compared product fields: title, description, vendor, productType, tags
- * Compared variant fields: price, compareAtPrice, cost, weight, weightUnit, barcode
+ * Compared product fields: title, description, vendor, productType, tags, images
+ * Compared variant fields: price, compareAtPrice, barcode, inventoryQuantity, weight
  *
  * Excluded from diff:
  *   - SKU (governed by provenance spec)
  *   - options (variant identity, not data)
- *   - images (separate workflow)
  *   - Shopify IDs (immutable)
  */
 
@@ -71,12 +70,28 @@ function diffProductFields(
   const changes: FieldChange[] = [];
 
   compareField(changes, "title", shopify.title, supplier.title);
+  compareField(changes, "description", shopify.description ?? null, supplier.description ?? null);
   compareField(changes, "vendor", shopify.vendor ?? null, supplier.vendor ?? null);
+  compareField(changes, "productType", shopify.productType ?? null, supplier.productType ?? null);
 
-  // Tags: compare as sorted comma-separated strings
-  // Shopify snapshot doesn't store tags separately in V1, so skip for now
-  // if we add tags to the snapshot later, uncomment:
-  // compareField(changes, "tags", shopifyTags, supplier.tags.join(", "));
+  // Tags: compare as sorted strings
+  const shopifyTags = (shopify.tags ?? []).slice().sort().join(", ");
+  const supplierTags = (supplier.tags ?? []).slice().sort().join(", ");
+  compareField(changes, "tags", shopifyTags || null, supplierTags || null);
+
+  // Images: compare by URL set (order-independent)
+  const shopifyImageUrls = (shopify.images ?? []).map((i) => i.url).sort().join("|");
+  const supplierImageUrls = (supplier.images ?? []).map((i) => i.sourceUrl).sort().join("|");
+  if (shopifyImageUrls !== supplierImageUrls && (shopifyImageUrls || supplierImageUrls)) {
+    const shopifyCount = (shopify.images ?? []).length;
+    const supplierCount = (supplier.images ?? []).length;
+    changes.push({
+      field: "images",
+      shopifyValue: shopifyCount > 0 ? `${shopifyCount} image${shopifyCount !== 1 ? "s" : ""}` : null,
+      supplierValue: supplierCount > 0 ? `${supplierCount} image${supplierCount !== 1 ? "s" : ""}` : null,
+      selected: true,
+    });
+  }
 
   return changes;
 }
@@ -150,12 +165,19 @@ function diffVariantFields(
 ): FieldChange[] {
   const changes: FieldChange[] = [];
 
-  // Price — supplier stores as string, snapshot doesn't store price in V1
-  // For V1 we can't diff price because ShopifyVariantSnapshot doesn't have it.
-  // This will be added when we extend the snapshot with price fields.
-  // For now, compare barcode (the one variant field we DO have in the snapshot).
-
+  compareField(changes, "price", shopify.price, supplier.price ?? null);
+  compareField(changes, "compareAtPrice", shopify.compareAtPrice, supplier.compareAtPrice ?? null);
   compareField(changes, "barcode", shopify.barcode, supplier.barcode ?? null);
+
+  // Inventory quantity — compare as strings
+  const shopifyQty = shopify.inventoryQuantity != null ? String(shopify.inventoryQuantity) : null;
+  const supplierQty = supplier.inventoryQuantity != null ? String(supplier.inventoryQuantity) : null;
+  compareField(changes, "inventoryQuantity", shopifyQty, supplierQty);
+
+  // Weight — compare as strings with unit
+  const shopifyWeight = shopify.weight != null ? `${shopify.weight} ${shopify.weightUnit ?? ""}`.trim() : null;
+  const supplierWeight = supplier.weight != null ? `${supplier.weight} ${supplier.weightUnit ?? ""}`.trim() : null;
+  compareField(changes, "weight", shopifyWeight, supplierWeight);
 
   // SKU is explicitly excluded from diff — governed by provenance spec
   // Options are excluded — they are variant identity, not data

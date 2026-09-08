@@ -173,9 +173,13 @@ export type ProductDiff = {
 export type SnapshotProduct = {
   shopifyProductId: string;
   title: string;
+  description: string | null;
   handle: string | null;
   vendor: string | null;
+  productType: string | null;
   status: string | null;
+  tags: string[];
+  images: Array<{ url: string; altText: string | null }>;
 };
 
 /** Variant snapshot fields needed for diff computation. */
@@ -184,6 +188,11 @@ export type SnapshotVariant = {
   shopifyProductId: string;
   sku: string | null;
   barcode: string | null;
+  price: string | null;
+  compareAtPrice: string | null;
+  inventoryQuantity: number | null;
+  weight: number | null;
+  weightUnit: string | null;
   option1: string | null;
   option2: string | null;
   option3: string | null;
