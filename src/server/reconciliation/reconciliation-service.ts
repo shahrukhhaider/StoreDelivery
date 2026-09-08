@@ -83,27 +83,31 @@ export async function runReconciliation(
     mappingCount: existingMappings.size,
   });
 
-  // Step 3: Build Shopify identity index from local snapshots
-  // Hard invariant: unmapped products must not be classified as NEW_PRODUCT
-  // unless StoreDelivery has a valid Shopify catalog snapshot.
-  let snapshotReady = await hasReadySnapshot(shopId);
-
-  // Auto-sync: if no sync has ever been done, run one now.
-  // This handles the new-merchant flow — a shop with 0 products syncs
-  // instantly and gets READY status, so the guard passes.
-  if (!snapshotReady) {
-    logger.info("No Shopify snapshot exists — triggering auto-sync before reconciliation", { shopId });
-    try {
-      const syncResult = await syncShopifyCatalog(shopId, client);
-      snapshotReady = syncResult.status === "READY";
-      logger.info("Auto-sync completed", {
+  // Step 3: Build Shopify identity index from local snapshots.
+  // Always refresh the snapshot before reconciliation to capture products
+  // created in previous imports. A stale snapshot causes false NEW_PRODUCT
+  // classifications and duplicate creation.
+  logger.info("Refreshing Shopify catalog snapshot before reconciliation", { shopId });
+  let snapshotReady = false;
+  try {
+    const syncResult = await syncShopifyCatalog(shopId, client);
+    snapshotReady = syncResult.status === "READY";
+    logger.info("Shopify snapshot refreshed", {
+      shopId,
+      status: syncResult.status,
+      productCount: syncResult.productCount,
+      variantCount: syncResult.variantCount,
+    });
+  } catch (err) {
+    // If sync fails, try to use an existing snapshot
+    snapshotReady = await hasReadySnapshot(shopId);
+    if (snapshotReady) {
+      logger.warn("Snapshot refresh failed, using existing snapshot", {
         shopId,
-        status: syncResult.status,
-        productCount: syncResult.productCount,
-        variantCount: syncResult.variantCount,
+        error: (err as Error).message,
       });
-    } catch (err) {
-      logger.error("Auto-sync failed — reconciliation guard will block new product creation", {
+    } else {
+      logger.error("No Shopify snapshot available — reconciliation guard will block new product creation", {
         shopId,
         error: (err as Error).message,
       });
