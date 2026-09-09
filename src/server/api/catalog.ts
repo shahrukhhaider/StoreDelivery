@@ -1018,11 +1018,15 @@ router.get("/:id/reconciliation/updates", async (req, res, next) => {
         snapshot.variants.map((v) => ({
           shopifyVariantId: v.shopifyVariantId,
           shopifyProductId: v.shopifyProductId,
+          inventoryItemId: null,
           sku: v.sku,
           barcode: v.barcode,
           price: null,
           compareAtPrice: null,
+          cost: null,
           inventoryQuantity: null,
+          inventoryPolicy: null,
+          taxable: null,
           weight: null,
           weightUnit: null,
           option1: v.option1,
@@ -1211,12 +1215,22 @@ router.post("/:id/reconciliation/updates/apply", async (req, res, next) => {
         })),
       }));
 
+      // Build inventoryItemId lookup from live Shopify variant data
+      const inventoryItemIds = new Map<string, string>();
+      for (const v of liveDetail.variants) {
+        if (v.shopifyVariantId && v.inventoryItemId) {
+          inventoryItemIds.set(v.shopifyVariantId, v.inventoryItemId);
+        }
+      }
+
       // Apply update
       const updateResult = await applyProductUpdate(client, {
         shopifyProductId: runItem.matchedShopifyId,
         sourceProductKey: sel.sourceProductKey,
+        shopDomain: shop.shopDomain,
         productChanges,
         variantChanges,
+        inventoryItemIds,
       });
 
       // Persist selection for audit

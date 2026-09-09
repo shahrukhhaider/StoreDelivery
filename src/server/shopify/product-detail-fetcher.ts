@@ -3,7 +3,7 @@
  *
  * Queries live Shopify API for product + variant fields needed by the diff engine:
  * title, description, vendor, productType, tags, images, and per-variant
- * price, compareAtPrice, barcode, inventoryQuantity, weight.
+ * price, compareAtPrice, barcode, inventoryQuantity, weight (via inventoryItem.measurement.weight).
  *
  * Uses node queries with batched IDs to minimize API calls.
  */
@@ -54,7 +54,20 @@ const PRODUCT_DETAILS_QUERY = `
               price
               compareAtPrice
               inventoryQuantity
-              weight
+              taxable
+              inventoryPolicy
+              inventoryItem {
+                id
+                unitCost {
+                  amount
+                }
+                measurement {
+                  weight {
+                    value
+                    unit
+                  }
+                }
+              }
               selectedOptions {
                 name
                 value
@@ -88,7 +101,15 @@ type ShopifyProductNode = {
         price: string | null;
         compareAtPrice: string | null;
         inventoryQuantity: number | null;
-        weight: number | null;
+        taxable: boolean;
+        inventoryPolicy: string;
+        inventoryItem: {
+          id: string;
+          unitCost: { amount: string } | null;
+          measurement: {
+            weight: { value: number; unit: string } | null;
+          } | null;
+        } | null;
         selectedOptions: Array<{ name: string; value: string }>;
       };
     }>;
@@ -161,13 +182,17 @@ export async function fetchProductDetails(
           return {
             shopifyVariantId: v.id,
             shopifyProductId: node.id,
+            inventoryItemId: v.inventoryItem?.id ?? null,
             sku: v.sku,
             barcode: v.barcode,
             price: v.price,
             compareAtPrice: v.compareAtPrice,
+            cost: v.inventoryItem?.unitCost?.amount ?? null,
             inventoryQuantity: v.inventoryQuantity,
-            weight: v.weight,
-            weightUnit: null,  // weightUnit not available directly on ProductVariant in Admin API 2024-10
+            inventoryPolicy: v.inventoryPolicy,
+            taxable: v.taxable,
+            weight: v.inventoryItem?.measurement?.weight?.value ?? null,
+            weightUnit: v.inventoryItem?.measurement?.weight?.unit ?? null,
             option1: opts[0]?.value ?? null,
             option2: opts[1]?.value ?? null,
             option3: opts[2]?.value ?? null,

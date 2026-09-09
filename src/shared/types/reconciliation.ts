@@ -186,11 +186,16 @@ export type SnapshotProduct = {
 export type SnapshotVariant = {
   shopifyVariantId: string;
   shopifyProductId: string;
+  /** Shopify InventoryItem GID — needed for inventoryItemUpdate and inventorySetOnHandQuantities mutations. */
+  inventoryItemId: string | null;
   sku: string | null;
   barcode: string | null;
   price: string | null;
   compareAtPrice: string | null;
+  cost: string | null;
   inventoryQuantity: number | null;
+  inventoryPolicy: string | null;
+  taxable: boolean | null;
   weight: number | null;
   weightUnit: string | null;
   option1: string | null;

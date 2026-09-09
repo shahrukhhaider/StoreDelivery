@@ -45,11 +45,15 @@ function shopifyVariant(overrides: Partial<SnapshotVariant> = {}): SnapshotVaria
   return {
     shopifyVariantId: "gid://shopify/ProductVariant/1",
     shopifyProductId: "gid://shopify/Product/1",
+    inventoryItemId: null,
     sku: "SKU-001",
     barcode: "BC-001",
     price: "24.99",
     compareAtPrice: null,
+    cost: null,
     inventoryQuantity: 10,
+    inventoryPolicy: "DENY",
+    taxable: true,
     weight: null,
     weightUnit: null,
     option1: null,
@@ -417,8 +421,8 @@ describe("diff — variant weight", () => {
       [variantMapping()],
     );
     const c = diff.variantChanges[0].changes.find((c) => c.field === "weight")!;
-    expect(c.shopifyValue).toBe("1 kg");
-    expect(c.supplierValue).toBe("2.5 kg");
+    expect(c.shopifyValue).toBe("1 KILOGRAMS");
+    expect(c.supplierValue).toBe("2.5 KILOGRAMS");
   });
 });
 
@@ -593,6 +597,7 @@ describe("diff — weightUnit=null from live Shopify API", () => {
     const shopifyWithNullUnit: SnapshotVariant = {
       shopifyVariantId: "gid://shopify/ProductVariant/1",
       shopifyProductId: "gid://shopify/Product/1",
+      inventoryItemId: null,
       sku: "SKU-001",
       barcode: null,
       price: "24.99",
@@ -600,6 +605,9 @@ describe("diff — weightUnit=null from live Shopify API", () => {
       inventoryQuantity: 10,
       weight: 1.0,
       weightUnit: null,  // ← what the API actually returns
+      cost: null,
+      inventoryPolicy: null,
+      taxable: null,
       option1: null,
       option2: null,
       option3: null,
@@ -632,6 +640,7 @@ describe("diff — weightUnit=null from live Shopify API", () => {
     const shopifyWithNullUnit: SnapshotVariant = {
       shopifyVariantId: "gid://shopify/ProductVariant/1",
       shopifyProductId: "gid://shopify/Product/1",
+      inventoryItemId: null,
       sku: "SKU-001",
       barcode: null,
       price: "24.99",
@@ -639,6 +648,9 @@ describe("diff — weightUnit=null from live Shopify API", () => {
       inventoryQuantity: 10,
       weight: 1.0,
       weightUnit: null,
+      cost: null,
+      inventoryPolicy: null,
+      taxable: null,
       option1: null,
       option2: null,
       option3: null,
@@ -664,9 +676,9 @@ describe("diff — weightUnit=null from live Shopify API", () => {
     // The test documents the known behavior
     const weightChange = diff.variantChanges.flatMap((v) => v.changes).find((c) => c.field === "weight");
     if (weightChange) {
-      // If detected: Shopify shows "1" (no unit), supplier shows "1 kg"
+      // If detected: Shopify shows "1" (no unit, null weightUnit), supplier shows "1 KILOGRAMS"
       expect(weightChange.shopifyValue).toBe("1");
-      expect(weightChange.supplierValue).toBe("1 kg");
+      expect(weightChange.supplierValue).toBe("1 KILOGRAMS");
     }
     // Whether detected or not, no crash — the behavior is documented
   });
@@ -675,6 +687,7 @@ describe("diff — weightUnit=null from live Shopify API", () => {
     const shopifyWithNullUnit: SnapshotVariant = {
       shopifyVariantId: "gid://shopify/ProductVariant/1",
       shopifyProductId: "gid://shopify/Product/1",
+      inventoryItemId: null,
       sku: "SKU-001",
       barcode: null,
       price: "24.99",
@@ -682,6 +695,7 @@ describe("diff — weightUnit=null from live Shopify API", () => {
       inventoryQuantity: 10,
       weight: 1.0,  // old weight
       weightUnit: null,
+      cost: null, inventoryPolicy: null, taxable: null,
       option1: null, option2: null, option3: null,
     };
 

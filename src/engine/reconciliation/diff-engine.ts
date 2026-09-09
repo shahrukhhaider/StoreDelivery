@@ -169,15 +169,39 @@ function diffVariantFields(
   compareField(changes, "compareAtPrice", shopify.compareAtPrice, supplier.compareAtPrice ?? null);
   compareField(changes, "barcode", shopify.barcode, supplier.barcode ?? null);
 
-  // Inventory quantity — compare as strings
+  // Cost — only diff if supplier explicitly provides a value (avoid clearing merchant-set costs)
+  if (supplier.cost != null) {
+    compareField(changes, "cost", shopify.cost, supplier.cost);
+  }
+
+  // Inventory quantity
   const shopifyQty = shopify.inventoryQuantity != null ? String(shopify.inventoryQuantity) : null;
   const supplierQty = supplier.inventoryQuantity != null ? String(supplier.inventoryQuantity) : null;
   compareField(changes, "inventoryQuantity", shopifyQty, supplierQty);
 
-  // Weight — compare as strings with unit
-  const shopifyWeight = shopify.weight != null ? `${shopify.weight} ${shopify.weightUnit ?? ""}`.trim() : null;
-  const supplierWeight = supplier.weight != null ? `${supplier.weight} ${supplier.weightUnit ?? ""}`.trim() : null;
+  // Weight — normalise units to Shopify canonical form before comparing so that
+  // "1.5 kg" and "1.5 KILOGRAMS" are not reported as a change.
+  const shopifyWeight =
+    shopify.weight != null
+      ? `${shopify.weight} ${normalizeWeightUnit(shopify.weightUnit ?? "")}`
+      : null;
+  const supplierWeight =
+    supplier.weight != null
+      ? `${supplier.weight} ${normalizeWeightUnit(supplier.weightUnit ?? "")}`
+      : null;
   compareField(changes, "weight", shopifyWeight, supplierWeight);
+
+  // Taxable flag — only diff if supplier explicitly provides a value
+  if (supplier.taxable != null) {
+    const shopifyTaxable = shopify.taxable != null ? String(shopify.taxable) : null;
+    const supplierTaxable = String(supplier.taxable);
+    compareField(changes, "taxable", shopifyTaxable, supplierTaxable);
+  }
+
+  // Inventory policy (DENY | CONTINUE) — only diff if supplier explicitly provides a value
+  if (supplier.inventoryPolicy != null) {
+    compareField(changes, "inventoryPolicy", shopify.inventoryPolicy, supplier.inventoryPolicy);
+  }
 
   // SKU is explicitly excluded from diff — governed by provenance spec
   // Options are excluded — they are variant identity, not data
@@ -215,4 +239,34 @@ function compareField(
 function normalizeForComparison(value: string | null | undefined): string {
   if (value === null || value === undefined) return "";
   return value.trim();
+}
+
+/**
+ * Normalise a weight unit string to the Shopify WeightUnit enum form.
+ * Shopify accepts: KILOGRAMS, GRAMS, POUNDS, OUNCES.
+ * Supplier files often use: kg, g, lb, oz, lbs, kilogram, gram, pound, ounce.
+ */
+function normalizeWeightUnit(unit: string): string {
+  switch (unit.toLowerCase().trim()) {
+    case "kg":
+    case "kilogram":
+    case "kilograms":
+      return "KILOGRAMS";
+    case "g":
+    case "gram":
+    case "grams":
+      return "GRAMS";
+    case "lb":
+    case "lbs":
+    case "pound":
+    case "pounds":
+      return "POUNDS";
+    case "oz":
+    case "ounce":
+    case "ounces":
+      return "OUNCES";
+    default:
+      // Return uppercase as-is — if Shopify already sent it, it's already canonical
+      return unit.toUpperCase();
+  }
 }

@@ -79,6 +79,8 @@ export type CatalogVariant = {
   inventoryQuantity?: number;
   weight?: number;
   weightUnit?: string;
+  taxable?: boolean;
+  inventoryPolicy?: string;
   sourceData: Record<string, unknown>;
 };
 
