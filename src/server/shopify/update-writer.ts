@@ -5,7 +5,7 @@
  *   - productSet                    → title, description, vendor, productType, tags, images
  *                                     + variant price, compareAtPrice, barcode
  *   - inventoryItemUpdate           → cost, weight (per variant, via inventoryItem.id)
- *   - inventorySetOnHandQuantities  → inventory quantity (per variant, via locationId)
+ *   - inventorySetQuantities          → inventory quantity (per variant, via locationId)
  *   - productVariantsBulkUpdate     → taxable, inventoryPolicy (per variant)
  *
  * Omitted fields remain unchanged in Shopify.
@@ -29,7 +29,7 @@ export type UpdateRequest = {
   variantChanges: VariantDiff[];
   /**
    * Map of shopifyVariantId → inventoryItemId.
-   * Required for inventoryItemUpdate (cost/weight) and inventorySetOnHandQuantities.
+   * Required for inventoryItemUpdate (cost/weight) and inventorySetQuantities.
    */
   inventoryItemIds: Map<string, string>;
 };
@@ -83,12 +83,15 @@ const INVENTORY_ITEM_UPDATE_MUTATION = `
 `;
 
 // ---------------------------------------------------------------------------
-// Mutation 3 — inventorySetOnHandQuantities (qty per variant × location)
+// Mutation 3 — inventorySetQuantities (qty per variant × location)
+// Replaces deprecated inventorySetOnHandQuantities (deprecated 2024-07).
+// As of 2026-04 the @idempotent directive is REQUIRED.
+// compareQuantity is MANDATORY (pass null to skip compare-and-swap check).
 // ---------------------------------------------------------------------------
 
 const INVENTORY_SET_QUANTITIES_MUTATION = `
-  mutation InventorySetOnHandQuantities($input: InventorySetOnHandQuantitiesInput!) {
-    inventorySetOnHandQuantities(input: $input) {
+  mutation InventorySetQuantities($input: InventorySetQuantitiesInput!, $idempotencyKey: String!) @idempotent(key: $idempotencyKey) {
+    inventorySetQuantities(input: $input) {
       inventoryAdjustmentGroup {
         createdAt
       }
@@ -107,7 +110,7 @@ const INVENTORY_SET_QUANTITIES_MUTATION = `
 
 const PRODUCT_VARIANTS_BULK_UPDATE_MUTATION = `
   mutation ProductVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-    productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+    productVariantsBulkUpdate(productId: $productId, variants: $variants, allowPartialUpdates: true) {
       productVariants {
         id
       }
@@ -142,7 +145,7 @@ function getValue(changes: FieldChange[], field: string): string | null {
  * Runs up to 4 mutations in sequence:
  *   1. productSet (always, if any product/basic-variant fields selected)
  *   2. inventoryItemUpdate per variant (if cost or weight selected)
- *   3. inventorySetOnHandQuantities (if inventoryQuantity selected for any variant)
+ *   3. inventorySetQuantities (if inventoryQuantity selected for any variant)
  *   4. productVariantsBulkUpdate (if taxable or inventoryPolicy selected for any variant)
  */
 export async function applyProductUpdate(
@@ -294,7 +297,9 @@ export async function applyProductUpdate(
 
     if (hasField(invChanges, "cost")) {
       const costVal = getValue(invChanges, "cost");
-      input.cost = costVal != null ? { amount: costVal, currencyCode: "USD" } : null;
+      // InventoryItemInput.cost is a plain Decimal scalar — shop's default currency is assumed.
+      // Do NOT wrap in { amount, currencyCode } — that's MoneyInput, which is a different type.
+      input.cost = costVal ?? null;
     }
 
     // weight field stores "value unit" string with canonical Shopify unit (e.g. "1.5 KILOGRAMS")
@@ -339,7 +344,10 @@ export async function applyProductUpdate(
   }
 
   // -------------------------------------------------------------------------
-  // Mutation 3 — inventorySetOnHandQuantities (qty)
+  // Mutation 3 — inventorySetQuantities (qty)
+  // Uses inventorySetQuantities (replaces deprecated inventorySetOnHandQuantities).
+  // @idempotent directive required as of 2026-04 — generate a UUID per call.
+  // compareQuantity: null opts out of compare-and-swap (safe for our use case).
   // -------------------------------------------------------------------------
 
   const qtyVariants = selectedVariantChanges.filter((v) =>
@@ -355,7 +363,13 @@ export async function applyProductUpdate(
         sourceProductKey: request.sourceProductKey,
       });
     } else {
-      const setQuantities: Array<{ inventoryItemId: string; locationId: string; quantity: number }> = [];
+      const quantities: Array<{
+        inventoryItemId: string;
+        locationId: string;
+        quantity: number;
+        compareQuantity: null;
+        name: string;
+      }> = [];
 
       for (const variantDiff of qtyVariants) {
         if (!variantDiff.shopifyVariantId) continue;
@@ -371,31 +385,46 @@ export async function applyProductUpdate(
         const qty = qtyStr != null ? parseInt(qtyStr, 10) : NaN;
         if (isNaN(qty)) continue;
 
-        setQuantities.push({ inventoryItemId, locationId, quantity: qty });
+        quantities.push({
+          inventoryItemId,
+          locationId,
+          quantity: qty,
+          compareQuantity: null,  // opt out of compare-and-swap
+          name: "on_hand",
+        });
       }
 
-      if (setQuantities.length > 0) {
+      if (quantities.length > 0) {
         try {
+          const idempotencyKey = crypto.randomUUID();
           const res = await client.query<{
-            inventorySetOnHandQuantities: {
+            inventorySetQuantities: {
               inventoryAdjustmentGroup: { createdAt: string } | null;
               userErrors: Array<{ field: string[]; message: string; code: string }>;
             };
           }>(
             INVENTORY_SET_QUANTITIES_MUTATION,
-            { input: { reason: "correction", setQuantities } },
-            "InventorySetOnHandQuantities",
+            {
+              input: {
+                reason: "correction",
+                referenceDocumentUri: `gid://storekeeper/UpdateRequest/${request.sourceProductKey}`,
+                quantities,
+                ignoreCompareQuantity: true,
+              },
+              idempotencyKey,
+            },
+            "InventorySetQuantities",
           );
 
-          const userErrors = res.data?.inventorySetOnHandQuantities?.userErrors ?? [];
+          const userErrors = res.data?.inventorySetQuantities?.userErrors ?? [];
           if (userErrors.length > 0) {
-            logger.warn("inventorySetOnHandQuantities validation error", {
+            logger.warn("inventorySetQuantities validation error", {
               sourceProductKey: request.sourceProductKey,
               errors: userErrors,
             });
           }
         } catch (err) {
-          logger.warn("inventorySetOnHandQuantities failed", {
+          logger.warn("inventorySetQuantities failed", {
             sourceProductKey: request.sourceProductKey,
             error: (err as Error).message,
           });

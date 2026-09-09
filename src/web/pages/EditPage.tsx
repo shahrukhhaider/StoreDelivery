@@ -180,6 +180,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
   const [typeProductCounts, setTypeProductCounts] = useState<Record<string, number>>({});
   const [severityProductCounts, setSeverityProductCounts] = useState<Record<string, number>>({});
+  const [catalogLevelWarningCount, setCatalogLevelWarningCount] = useState(0);
   const [totalProducts, setTotalProducts] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -253,6 +254,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
         setTypeCounts(issueRes.typeCounts);
         setTypeProductCounts(issueRes.typeProductCounts ?? {});
         setSeverityProductCounts(issueRes.severityProductCounts ?? {});
+        setCatalogLevelWarningCount(issueRes.catalogLevelWarningCount ?? 0);
         setTotalProducts(issueRes.totalProducts ?? 0);
         setProducts([]);
         setTotalPages(1);
@@ -283,6 +285,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       setTypeCounts(issueRes.typeCounts);
       setTypeProductCounts(issueRes.typeProductCounts ?? {});
       setSeverityProductCounts(issueRes.severityProductCounts ?? {});
+      setCatalogLevelWarningCount(issueRes.catalogLevelWarningCount ?? 0);
       setTotalProducts(issueRes.totalProducts ?? 0);
       
       // For the Ready tab, filter to only products without issues
@@ -417,7 +420,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
     let count: number;
     if (tab.id === "ready") count = totalProducts - (severityProductCounts["blocking"] ?? 0) - (severityProductCounts["warning"] ?? 0);
     else if (tab.id === "blocking") count = severityProductCounts["blocking"] ?? 0;
-    else if (tab.id === "warning") count = severityProductCounts["warning"] ?? 0;
+    else if (tab.id === "warning") count = (severityProductCounts["warning"] ?? 0) + catalogLevelWarningCount;
     else if (tab.id === "updates") count = updateReview?.totalWithChanges ?? 0;
     else count = 0;
     return {

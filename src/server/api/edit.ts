@@ -133,6 +133,14 @@ router.get("/:id/edit/issues", async (req, res, next) => {
       (sum, list) => sum + list.length, 0,
     );
 
+    // Catalog-level issues (no sourceKey) — e.g. DUPLICATE_SKU, DUPLICATE_BARCODE
+    const catalogLevelWarningCount = validationResult.issues.filter(
+      (i) => i.severity === "warning" && !i.sourceKey,
+    ).length;
+    const catalogLevelBlockingCount = validationResult.issues.filter(
+      (i) => i.severity === "blocking" && !i.sourceKey,
+    ).length;
+
     res.json({
       issues: paginated.map((i) => ({
         code: i.code,
@@ -158,6 +166,9 @@ router.get("/:id/edit/issues", async (req, res, next) => {
       severityCounts,
       typeProductCounts,
       severityProductCounts,
+      /** Catalog-level warning/blocking counts (issues with no sourceKey, e.g. DUPLICATE_SKU) */
+      catalogLevelWarningCount,
+      catalogLevelBlockingCount,
       totalProducts: products.length,
     });
   } catch (err) { next(err); }

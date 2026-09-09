@@ -37,7 +37,7 @@ export type ShopifyClientOptions = {
   throttleThreshold?: number;
 };
 
-const DEFAULT_API_VERSION = "2024-10";
+const DEFAULT_API_VERSION = "2025-07";
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_THROTTLE_THRESHOLD = 100;
 

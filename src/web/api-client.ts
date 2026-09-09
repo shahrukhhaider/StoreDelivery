@@ -444,6 +444,10 @@ export type EditIssuesResponse = {
   severityCounts: Record<string, number>;
   typeProductCounts: Record<string, number>;
   severityProductCounts: Record<string, number>;
+  /** Catalog-level warning count (issues with no sourceKey, e.g. DUPLICATE_SKU) */
+  catalogLevelWarningCount: number;
+  /** Catalog-level blocking count (issues with no sourceKey) */
+  catalogLevelBlockingCount: number;
   totalProducts: number;
 };
 
