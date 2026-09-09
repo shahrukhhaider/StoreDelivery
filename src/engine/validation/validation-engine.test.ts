@@ -436,3 +436,191 @@ describe("skuCoverage", () => {
     expect(result.skuCoverage.generatedSku).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// MISSING_OPTIONS — multi-variant without option values
+// ---------------------------------------------------------------------------
+
+describe("MISSING_OPTIONS", () => {
+  it("blocks: multi-variant product with no options mapped", () => {
+    const result = validateCatalog([
+      product({
+        variants: [
+          { sourceKey: "V1", sku: "A", options: {}, price: "10", sourceData: {} },
+          { sourceKey: "V2", sku: "B", options: {}, price: "20", sourceData: {} },
+        ],
+      }),
+    ]);
+    const issue = result.issues.find((i) => i.code === "MISSING_OPTIONS");
+    expect(issue).toBeDefined();
+    expect(issue!.severity).toBe("blocking");
+  });
+
+  it("blocks: multi-variant with only empty option values", () => {
+    const result = validateCatalog([
+      product({
+        variants: [
+          { sourceKey: "V1", sku: "A", options: { Color: "" }, price: "10", sourceData: {} },
+          { sourceKey: "V2", sku: "B", options: { Color: "  " }, price: "20", sourceData: {} },
+        ],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "MISSING_OPTIONS")).toBeDefined();
+  });
+
+  it("does NOT block: single-variant product with no options", () => {
+    const result = validateCatalog([
+      product({
+        variants: [
+          { sourceKey: "V1", sku: "A", options: {}, price: "10", sourceData: {} },
+        ],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "MISSING_OPTIONS")).toBeUndefined();
+  });
+
+  it("does NOT block: multi-variant with valid options", () => {
+    const result = validateCatalog([
+      product({
+        variants: [
+          { sourceKey: "V1", sku: "A", options: { Color: "Red" }, price: "10", sourceData: {} },
+          { sourceKey: "V2", sku: "B", options: { Color: "Blue" }, price: "20", sourceData: {} },
+        ],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "MISSING_OPTIONS")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shopify limit validations
+// ---------------------------------------------------------------------------
+
+describe("TOO_MANY_OPTIONS", () => {
+  it("blocks: product with 4 option types", () => {
+    const result = validateCatalog([
+      product({
+        variants: [{
+          sourceKey: "V1", sku: "A",
+          options: { Color: "Red", Size: "M", Material: "Cotton", Fit: "Slim" },
+          price: "10", sourceData: {},
+        }],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "TOO_MANY_OPTIONS")).toBeDefined();
+    expect(result.issues.find((i) => i.code === "TOO_MANY_OPTIONS")!.severity).toBe("blocking");
+  });
+
+  it("allows: product with 3 option types", () => {
+    const result = validateCatalog([
+      product({
+        variants: [{
+          sourceKey: "V1", sku: "A",
+          options: { Color: "Red", Size: "M", Material: "Cotton" },
+          price: "10", sourceData: {},
+        }],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "TOO_MANY_OPTIONS")).toBeUndefined();
+  });
+});
+
+describe("TOO_MANY_VARIANTS", () => {
+  it("blocks: product with 101 variants", () => {
+    const variants = Array.from({ length: 101 }, (_, i) => ({
+      sourceKey: `V${i}`, sku: `SKU-${i}`,
+      options: { Num: String(i) }, price: "10", sourceData: {},
+    }));
+    const result = validateCatalog([product({ variants })]);
+    expect(result.issues.find((i) => i.code === "TOO_MANY_VARIANTS")).toBeDefined();
+  });
+
+  it("allows: product with 100 variants", () => {
+    const variants = Array.from({ length: 100 }, (_, i) => ({
+      sourceKey: `V${i}`, sku: `SKU-${i}`,
+      options: { Num: String(i) }, price: "10", sourceData: {},
+    }));
+    const result = validateCatalog([product({ variants })]);
+    expect(result.issues.find((i) => i.code === "TOO_MANY_VARIANTS")).toBeUndefined();
+  });
+});
+
+describe("TITLE_TOO_LONG", () => {
+  it("blocks: title over 255 characters", () => {
+    const result = validateCatalog([product({ title: "A".repeat(256) })]);
+    expect(result.issues.find((i) => i.code === "TITLE_TOO_LONG")).toBeDefined();
+  });
+
+  it("allows: title exactly 255 characters", () => {
+    const result = validateCatalog([product({ title: "A".repeat(255) })]);
+    expect(result.issues.find((i) => i.code === "TITLE_TOO_LONG")).toBeUndefined();
+  });
+});
+
+describe("OPTION_VALUE_TOO_LONG", () => {
+  it("blocks: option value over 255 characters", () => {
+    const result = validateCatalog([
+      product({
+        variants: [{
+          sourceKey: "V1", sku: "A",
+          options: { Color: "R".repeat(256) },
+          price: "10", sourceData: {},
+        }],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "OPTION_VALUE_TOO_LONG")).toBeDefined();
+  });
+});
+
+describe("DUPLICATE_OPTION_VALUES", () => {
+  it("blocks: two variants with identical option combination", () => {
+    const result = validateCatalog([
+      product({
+        variants: [
+          { sourceKey: "V1", sku: "A", options: { Color: "Red", Size: "M" }, price: "10", sourceData: {} },
+          { sourceKey: "V2", sku: "B", options: { Color: "Red", Size: "M" }, price: "20", sourceData: {} },
+        ],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "DUPLICATE_OPTION_VALUES")).toBeDefined();
+  });
+
+  it("allows: variants with different option values", () => {
+    const result = validateCatalog([
+      product({
+        variants: [
+          { sourceKey: "V1", sku: "A", options: { Color: "Red", Size: "M" }, price: "10", sourceData: {} },
+          { sourceKey: "V2", sku: "B", options: { Color: "Blue", Size: "M" }, price: "20", sourceData: {} },
+        ],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "DUPLICATE_OPTION_VALUES")).toBeUndefined();
+  });
+});
+
+describe("NEGATIVE_PRICE", () => {
+  it("blocks: negative price", () => {
+    const result = validateCatalog([
+      product({
+        variants: [{
+          sourceKey: "V1", sku: "A", options: {},
+          price: "-5.00", sourceData: {},
+        }],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "NEGATIVE_PRICE")).toBeDefined();
+    expect(result.issues.find((i) => i.code === "NEGATIVE_PRICE")!.severity).toBe("blocking");
+  });
+
+  it("allows: zero price (free product)", () => {
+    const result = validateCatalog([
+      product({
+        variants: [{
+          sourceKey: "V1", sku: "A", options: {},
+          price: "0.00", sourceData: {},
+        }],
+      }),
+    ]);
+    expect(result.issues.find((i) => i.code === "NEGATIVE_PRICE")).toBeUndefined();
+  });
+});

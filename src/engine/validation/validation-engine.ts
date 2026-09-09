@@ -36,6 +36,12 @@ const MAX_REASONABLE_PRICE = 99999;
 const MIN_REASONABLE_PRICE = 0.01;
 const URL_SYNTAX_RE = /^https?:\/\/.+/i;
 
+// Shopify hard limits
+const MAX_OPTIONS_PER_PRODUCT = 3;
+const MAX_VARIANTS_PER_PRODUCT = 100;
+const MAX_TITLE_LENGTH = 255;
+const MAX_OPTION_VALUE_LENGTH = 255;
+
 /**
  * Validate a list of catalog products and return all issues.
  */
@@ -89,6 +95,92 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
       );
     }
 
+    // Multi-variant product without options — Shopify requires unique option
+    // values to distinguish variants. Without mapped option columns, all
+    // variants are indistinguishable and creation will fail.
+    if (product.variants.length > 1) {
+      const hasAnyOptions = product.variants.some(
+        (v) => Object.values(v.options).some((val) => val && val.trim() !== ""),
+      );
+      if (!hasAnyOptions) {
+        issues.push(
+          blocking(
+            "MISSING_OPTIONS",
+            `Product has ${product.variants.length} variants but no option values (e.g. Color, Size) to distinguish them. Map an option column or reduce to one variant.`,
+            product.sourceKey,
+            "options",
+          ),
+        );
+      }
+    }
+
+    // Too many options — Shopify allows max 3 option names per product
+    const optionNames = new Set<string>();
+    for (const v of product.variants) {
+      for (const key of Object.keys(v.options)) {
+        if (v.options[key]?.trim()) optionNames.add(key);
+      }
+    }
+    if (optionNames.size > MAX_OPTIONS_PER_PRODUCT) {
+      issues.push(
+        blocking(
+          "TOO_MANY_OPTIONS",
+          `Product has ${optionNames.size} option types (${[...optionNames].join(", ")}), but Shopify allows a maximum of ${MAX_OPTIONS_PER_PRODUCT}`,
+          product.sourceKey,
+          "options",
+        ),
+      );
+    }
+
+    // Too many variants — Shopify allows max 100 variants per product
+    if (product.variants.length > MAX_VARIANTS_PER_PRODUCT) {
+      issues.push(
+        blocking(
+          "TOO_MANY_VARIANTS",
+          `Product has ${product.variants.length} variants, but Shopify allows a maximum of ${MAX_VARIANTS_PER_PRODUCT}`,
+          product.sourceKey,
+          "variants",
+        ),
+      );
+    }
+
+    // Title too long — Shopify max 255 characters
+    if (product.title && product.title.length > MAX_TITLE_LENGTH) {
+      issues.push(
+        blocking(
+          "TITLE_TOO_LONG",
+          `Title is ${product.title.length} characters, but Shopify allows a maximum of ${MAX_TITLE_LENGTH}`,
+          product.sourceKey,
+          "title",
+        ),
+      );
+    }
+
+    // Duplicate option value combinations — Shopify rejects two variants
+    // with identical option values (e.g. two "Red / M" variants)
+    if (product.variants.length > 1) {
+      const seenCombos = new Set<string>();
+      for (const v of product.variants) {
+        const combo = Object.entries(v.options)
+          .filter(([, val]) => val?.trim())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([k, val]) => `${k}=${val.trim().toLowerCase()}`)
+          .join("|");
+        if (combo && seenCombos.has(combo)) {
+          issues.push(
+            blocking(
+              "DUPLICATE_OPTION_VALUES",
+              `Two variants have identical options (${combo.replace(/\|/g, ", ")}). Each variant must have a unique option combination.`,
+              product.sourceKey,
+              "options",
+            ),
+          );
+          break; // one per product is enough
+        }
+        if (combo) seenCombos.add(combo);
+      }
+    }
+
     // Track per-product missing SKU count for aggregation
     let productMissingSkuCount = 0;
 
@@ -105,6 +197,29 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
               `Price "${variant.price}" cannot be parsed as a number`,
               product.sourceKey,
               "price",
+            ),
+          );
+        } else if (price < 0) {
+          issues.push(
+            blocking(
+              "NEGATIVE_PRICE",
+              `Price ${variant.price} is negative — Shopify requires price >= 0`,
+              product.sourceKey,
+              "price",
+            ),
+          );
+        }
+      }
+
+      // Option value length — Shopify max 255 characters per option value
+      for (const [optName, optVal] of Object.entries(variant.options)) {
+        if (optVal && optVal.length > MAX_OPTION_VALUE_LENGTH) {
+          issues.push(
+            blocking(
+              "OPTION_VALUE_TOO_LONG",
+              `Option "${optName}" value is ${optVal.length} characters (max ${MAX_OPTION_VALUE_LENGTH})`,
+              product.sourceKey,
+              optName,
             ),
           );
         }

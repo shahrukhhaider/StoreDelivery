@@ -12,7 +12,8 @@
 import { getPrisma } from "../db.js";
 import { getLogger } from "../logger.js";
 import { ShopifyGraphQLClient } from "../shopify/graphql-client.js";
-import { fetchShopifyIdentityIndex } from "../shopify/duplicate-detector.js";
+import { fetchShopifyIdentityIndex, fetchTargetedIdentityIndex } from "../shopify/duplicate-detector.js";
+import { fetchProductDetails } from "../shopify/product-detail-fetcher.js";
 import { classifyProducts, type ClassifyProductsInput } from "../../engine/reconciliation/reconciliation-engine.js";
 import { computeProductFingerprint } from "../../engine/reconciliation/product-fingerprint.js";
 import { computeProductDiff } from "../../engine/reconciliation/diff-engine.js";
@@ -83,11 +84,24 @@ export async function runReconciliation(
     mappingCount: existingMappings.size,
   });
 
-  // Step 3: Fetch Shopify identity index from live API
-  // Shopify is the source of truth — always query live to avoid stale data.
-  // The GraphQL client handles rate limiting and staggered retries.
-  logger.info("Fetching Shopify identity index from live API", { shopId });
-  const shopifyIndex: ShopifyIdentityIndex = await fetchShopifyIdentityIndex(client);
+  // Step 3: Fetch Shopify identity index — targeted query using supplier SKUs/barcodes.
+  // This is much faster than fetching the entire catalog: only products whose variants
+  // match the supplier identifiers are fetched. Falls back to full fetch if needed.
+  logger.info("Fetching targeted Shopify identity index", { shopId });
+
+  // Collect all unique SKUs and barcodes from supplier products
+  const supplierSkus = [...new Set(
+    products.flatMap((p) => p.variants.map((v) => v.sku?.trim()).filter((s): s is string => !!s)),
+  )];
+  const supplierBarcodes = [...new Set(
+    products.flatMap((p) => p.variants.map((v) => v.barcode?.trim()).filter((b): b is string => !!b)),
+  )];
+
+  const shopifyIndex: ShopifyIdentityIndex = await fetchTargetedIdentityIndex(
+    client,
+    supplierSkus,
+    supplierBarcodes,
+  );
 
   logger.info("Shopify identity index loaded", {
     shopId,
@@ -103,20 +117,114 @@ export async function runReconciliation(
     shopifyIndex,
   });
 
-  // Step 5: For EXISTING_MAPPED products, classify as NO_CHANGE for now.
-  // Diffs will be computed on-demand from the live Shopify API when the
-  // merchant opens the update review page — not during import.
+  // Step 5: For EXISTING_MAPPED products, fetch live Shopify data and compute diffs.
+  // Products with changes → UPDATE_REVIEW, no changes → NO_CHANGE.
   const diffs: ProductDiff[] = [];
-  const finalClassifications = classifications.map((c) => {
-    if (c.classification === "EXISTING_MAPPED") {
+
+  const mappedClassifications = classifications.filter(
+    (c) => c.classification === "EXISTING_MAPPED" && c.matchedShopifyProductId,
+  );
+
+  // Also include LIKELY_EXISTING with HIGH confidence (auto-matched to Shopify)
+  const likelyHighClassifications = classifications.filter(
+    (c) => c.classification === "LIKELY_EXISTING" && c.matchedShopifyProductId && c.confidence === "HIGH",
+  );
+
+  const allMatchedClassifications = [...mappedClassifications, ...likelyHighClassifications];
+
+  let finalClassifications = classifications;
+
+  if (allMatchedClassifications.length > 0) {
+    // Fetch full product details from live Shopify API
+    const shopifyProductIds = [
+      ...new Set(allMatchedClassifications.map((c) => c.matchedShopifyProductId!)),
+    ];
+
+    logger.info("Fetching Shopify product details for diff computation", {
+      productCount: shopifyProductIds.length,
+    });
+
+    let shopifyDetails: Map<string, import("../shopify/product-detail-fetcher.js").ShopifyProductDetail>;
+    try {
+      shopifyDetails = await fetchProductDetails(client, shopifyProductIds);
+    } catch (err) {
+      // If detail fetch fails entirely, fall back to NO_CHANGE (safe — no accidental creates)
+      logger.error("Failed to fetch Shopify product details — falling back to NO_CHANGE", {
+        error: (err as Error).message,
+      });
+      shopifyDetails = new Map();
+    }
+
+    // Build supplier product lookup
+    const productByKey = new Map(products.map((p) => [p.sourceKey, p]));
+
+    finalClassifications = classifications.map((c) => {
+      if (
+        (c.classification !== "EXISTING_MAPPED" && c.classification !== "LIKELY_EXISTING") ||
+        !c.matchedShopifyProductId
+      ) {
+        return c;
+      }
+
+      // Skip LIKELY_EXISTING that aren't HIGH confidence
+      if (c.classification === "LIKELY_EXISTING" && c.confidence !== "HIGH") {
+        return c;
+      }
+
+      const detail = shopifyDetails.get(c.matchedShopifyProductId);
+      const supplierProduct = productByKey.get(c.sourceProductKey);
+
+      if (!detail || !supplierProduct) {
+        // Can't diff — treat as NO_CHANGE (safe default)
+        return {
+          ...c,
+          classification: "NO_CHANGE" as const,
+          proposedAction: "NO_CHANGE" as const,
+        };
+      }
+
+      // Load variant mappings for correlating supplier→Shopify variants
+      const productMapping = existingMappings.get(c.sourceProductKey);
+      const variantMappings = productMapping?.variants ?? [];
+
+      const diff = computeProductDiff(
+        supplierProduct,
+        detail.product,
+        detail.variants,
+        variantMappings,
+      );
+
+      if (diff.hasChanges) {
+        diffs.push(diff);
+        return {
+          ...c,
+          classification: "UPDATE_REVIEW" as const,
+          proposedAction: "UPDATE_PRODUCT" as const,
+        };
+      }
+
       return {
         ...c,
         classification: "NO_CHANGE" as const,
         proposedAction: "NO_CHANGE" as const,
       };
-    }
-    return c;
-  });
+    });
+
+    logger.info("Diff computation complete", {
+      matched: allMatchedClassifications.length,
+      detailsFetched: shopifyDetails.size,
+      updateReview: diffs.length,
+      noChange: allMatchedClassifications.length - diffs.length,
+    });
+  } else {
+    // No matched products — just reclassify
+    finalClassifications = classifications.map((c) => {
+      if (c.classification === "EXISTING_MAPPED") {
+        return { ...c, classification: "NO_CHANGE" as const, proposedAction: "NO_CHANGE" as const };
+      }
+      return c;
+    });
+  }
 
   const finalSummary = {
     totalProducts: finalClassifications.length,

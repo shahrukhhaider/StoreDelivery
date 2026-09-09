@@ -124,26 +124,6 @@ export function IssueSidePanel({
 
         <Divider />
 
-        {/* Detected fields */}
-        {detectedFields && detectedFields.length > 0 && (
-          <BlockStack gap="200">
-            <Text as="h4" variant="headingSm">
-              Product details ({String(detectedFields.length)} fields)
-            </Text>
-            <Card>
-              <BlockStack gap="100">
-                {detectedFields.map((f, i) => (
-                  <InlineStack key={i} gap="200" align="space-between">
-                    <Text as="span" variant="bodySm" tone="subdued">{f.label}</Text>
-                    <Text as="span" variant="bodySm" fontWeight="semibold">{f.value}</Text>
-                  </InlineStack>
-                ))}
-              </BlockStack>
-            </Card>
-            <Divider />
-          </BlockStack>
-        )}
-
         {/* Edit section — always shown */}
         <BlockStack gap="300">
           <Text as="h4" variant="headingSm">

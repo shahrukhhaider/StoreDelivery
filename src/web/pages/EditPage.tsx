@@ -21,6 +21,7 @@ import {
   Spinner,
   Tabs,
   Tooltip,
+  Divider,
 } from "@shopify/polaris";
 import {
   getEditIssues,
@@ -29,6 +30,8 @@ import {
   runAutoFix,
   clearAllOverrides,
   findSimilarIssues,
+  runReconciliation as runReconApi,
+  applyUpdates,
   type EditIssueSummary,
   type EditIssue,
   type PreviewProduct,
@@ -52,6 +55,7 @@ const FILTER_TABS = [
   { id: "ready", content: "Ready" },
   { id: "blocking", content: "Blocking" },
   { id: "warning", content: "Warnings" },
+  { id: "updates", content: "Updates" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -190,6 +194,17 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   // Reset state
   const [resetting, setResetting] = useState(false);
 
+  // Reconciliation / updates state
+  const [updateReview, setUpdateReview] = useState<{
+    catalogId: string;
+    catalogRunId: string;
+    totalWithChanges: number;
+    products: import("../api-client.js").ProductDiffItem[];
+  } | null>(null);
+  const [reconLoading, setReconLoading] = useState(false);
+  const [applyingUpdates, setApplyingUpdates] = useState(false);
+  const [updateResult, setUpdateResult] = useState<{ applied: number; failed: number } | null>(null);
+
   // Side panel state
   const [selectedProductIssues, setSelectedProductIssues] = useState<EditIssue[]>([]);
   const [similarDataMap, setSimilarDataMap] = useState<Map<string, SimilarIssuesResponse>>(new Map());
@@ -209,6 +224,44 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
     setLoading(true);
     try {
       const selectedTab = FILTER_TABS[activeTab];
+
+      // Updates tab: trigger reconciliation and load diffs
+      if (selectedTab.id === "updates") {
+        setReconLoading(true);
+        try {
+          const reconResult = await runReconApi(catalogId);
+          // Use diffs returned directly from reconciliation (live Shopify data)
+          setUpdateReview(
+            reconResult.diffs && reconResult.diffs.length > 0
+              ? {
+                  catalogId,
+                  catalogRunId: reconResult.catalogRunId,
+                  totalWithChanges: reconResult.diffs.length,
+                  products: reconResult.diffs,
+                }
+              : null,
+          );
+        } catch {
+          // silent — updates tab will show empty state
+        } finally {
+          setReconLoading(false);
+        }
+        // Still load issue summary for the tab counts
+        const issueRes = await getEditIssues(catalogId, { page: 1, pageSize: 100 });
+        setSummary(issueRes.summary);
+        setIssues(issueRes.issues);
+        setTypeCounts(issueRes.typeCounts);
+        setTypeProductCounts(issueRes.typeProductCounts ?? {});
+        setSeverityProductCounts(issueRes.severityProductCounts ?? {});
+        setTotalProducts(issueRes.totalProducts ?? 0);
+        setProducts([]);
+        setTotalPages(1);
+        setTotal(0);
+        setOverrideStats({ productsWithOverrides: 0, totalOverrides: 0 });
+        setLoading(false);
+        return;
+      }
+
       const issueOpts: { type?: string; severity?: string; page?: number; pageSize?: number } = { page: 1, pageSize: 100 };
 
       // Map tab to filter
@@ -231,9 +284,19 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       setTypeProductCounts(issueRes.typeProductCounts ?? {});
       setSeverityProductCounts(issueRes.severityProductCounts ?? {});
       setTotalProducts(issueRes.totalProducts ?? 0);
-      setProducts(previewRes.products);
-      setTotalPages(previewRes.totalPages);
-      setTotal(previewRes.total);
+      
+      // For the Ready tab, filter to only products without issues
+      if (selectedTab.id === "ready") {
+        const issueKeys = new Set(issueRes.issues.map((i) => i.sourceKey).filter(Boolean));
+        const readyProducts = previewRes.products.filter((p) => !issueKeys.has(p.sourceKey));
+        setProducts(readyProducts);
+        setTotalPages(1);
+        setTotal(readyProducts.length);
+      } else {
+        setProducts(previewRes.products);
+        setTotalPages(previewRes.totalPages);
+        setTotal(previewRes.total);
+      }
       setOverrideStats(previewRes.overrideStats);
     } catch {
       // handle error silently
@@ -355,6 +418,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
     if (tab.id === "ready") count = totalProducts - (severityProductCounts["blocking"] ?? 0) - (severityProductCounts["warning"] ?? 0);
     else if (tab.id === "blocking") count = severityProductCounts["blocking"] ?? 0;
     else if (tab.id === "warning") count = severityProductCounts["warning"] ?? 0;
+    else if (tab.id === "updates") count = updateReview?.totalWithChanges ?? 0;
     else count = 0;
     return {
       ...tab,
@@ -664,8 +728,147 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
           );
         })()}
 
-        {/* Product Grid */}
-        <Card padding="0">
+        {/* Per-product issue summary — grouped by issue code */}
+        {(() => {
+          const selectedTab = FILTER_TABS[activeTab];
+          if (selectedTab.id === "ready") return null;
+
+          const relevantIssues = selectedTab.id === "blocking"
+            ? issues.filter((i) => i.severity === "blocking" && i.sourceKey)
+            : selectedTab.id === "warning"
+              ? issues.filter((i) => i.severity === "warning" && i.sourceKey)
+              : issues.filter((i) => i.sourceKey);
+
+          if (relevantIssues.length === 0) return null;
+
+          const grouped = new Map<string, Set<string>>();
+          for (const issue of relevantIssues) {
+            const keys = grouped.get(issue.code) ?? new Set();
+            if (issue.sourceKey) keys.add(issue.sourceKey);
+            grouped.set(issue.code, keys);
+          }
+
+          return (
+            <Card>
+              <BlockStack gap="200">
+                <Text as="h3" variant="headingSm">
+                  {relevantIssues.length} issue{relevantIssues.length !== 1 ? "s" : ""} across {
+                    new Set(relevantIssues.map((i) => i.sourceKey).filter(Boolean)).size
+                  } products
+                </Text>
+                <BlockStack gap="100">
+                  {[...grouped.entries()].map(([code, keys]) => (
+                    <Text as="p" variant="bodySm" key={code}>
+                      • <strong>{code}</strong> — {keys.size} product{keys.size !== 1 ? "s" : ""}
+                    </Text>
+                  ))}
+                </BlockStack>
+              </BlockStack>
+            </Card>
+          );
+        })()}
+
+        {/* Updates Tab Content */}
+        {FILTER_TABS[activeTab]?.id === "updates" && (
+          <Card>
+            <BlockStack gap="400">
+              {reconLoading ? (
+                <InlineStack align="center" gap="200">
+                  <Spinner size="small" />
+                  <Text as="p">Analyzing catalog against Shopify...</Text>
+                </InlineStack>
+              ) : updateReview && updateReview.totalWithChanges > 0 ? (
+                <>
+                  <InlineStack align="space-between">
+                    <Text as="h3" variant="headingSm">
+                      {updateReview.totalWithChanges} product{updateReview.totalWithChanges !== 1 ? "s" : ""} with updates
+                    </Text>
+                    <Button
+                      onClick={async () => {
+                        setApplyingUpdates(true);
+                        try {
+                          const selections = updateReview.products.map((p) => ({
+                            sourceProductKey: p.sourceProductKey,
+                            fields: [
+                              ...p.productChanges.map((c) => ({ field: c.field, selected: true })),
+                              ...p.variantChanges.flatMap((v) =>
+                                v.changes.map((c) => ({ field: `variants.${c.field}`, selected: true })),
+                              ),
+                            ],
+                          }));
+                          const result = await applyUpdates(catalogId, selections);
+                          setUpdateResult({ applied: result.applied, failed: result.failed });
+                          loadData(1);
+                        } catch { /* silent */ } finally {
+                          setApplyingUpdates(false);
+                        }
+                      }}
+                      loading={applyingUpdates}
+                    >
+                      Apply All Updates
+                    </Button>
+                  </InlineStack>
+
+                  {updateResult && (
+                    <Banner
+                      title={`${updateResult.applied} applied, ${updateResult.failed} failed`}
+                      tone={updateResult.failed > 0 ? "warning" : "success"}
+                    />
+                  )}
+
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    These products exist in Shopify but the supplier data differs.
+                  </Text>
+
+                  <Divider />
+
+                  {updateReview.products.map((product) => (
+                    <BlockStack key={product.sourceProductKey} gap="200">
+                      <Text as="p" fontWeight="semibold">{product.sourceProductKey}</Text>
+                      <BlockStack gap="100">
+                        {product.productChanges.map((c, i) => (
+                          <InlineStack key={`p-${i}`} gap="200">
+                            <Badge>{c.field}</Badge>
+                            <Text as="span" variant="bodySm" tone="subdued" textDecorationLine="line-through">
+                              {c.shopifyValue ?? "(empty)"}
+                            </Text>
+                            <Text as="span" variant="bodySm">→</Text>
+                            <Text as="span" variant="bodySm" fontWeight="semibold">
+                              {c.supplierValue ?? "(empty)"}
+                            </Text>
+                          </InlineStack>
+                        ))}
+                        {product.variantChanges.map((v) =>
+                          v.changes.map((c, i) => (
+                            <InlineStack key={`v-${v.sourceVariantKey}-${i}`} gap="200">
+                              <Badge tone="info">{v.sourceVariantKey}</Badge>
+                              <Badge>{c.field}</Badge>
+                              <Text as="span" variant="bodySm" tone="subdued" textDecorationLine="line-through">
+                                {c.shopifyValue ?? "(empty)"}
+                              </Text>
+                              <Text as="span" variant="bodySm">→</Text>
+                              <Text as="span" variant="bodySm" fontWeight="semibold">
+                                {c.supplierValue ?? "(empty)"}
+                              </Text>
+                            </InlineStack>
+                          )),
+                        )}
+                      </BlockStack>
+                      <Divider />
+                    </BlockStack>
+                  ))}
+                </>
+              ) : (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  No updates detected — all existing products match the supplier data.
+                </Text>
+              )}
+            </BlockStack>
+          </Card>
+        )}
+
+        {/* Product Grid — hidden on Updates tab */}
+        {FILTER_TABS[activeTab]?.id !== "updates" && <Card padding="0">
           <IndexTable
             itemCount={products.length}
             headings={[
@@ -682,10 +885,10 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
           >
             {rowMarkup}
           </IndexTable>
-        </Card>
+        </Card>}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
+        {/* Pagination — hidden on Updates tab */}
+        {FILTER_TABS[activeTab]?.id !== "updates" && totalPages > 1 && (
           <InlineStack align="center">
             <Pagination
               hasPrevious={page > 1}
@@ -724,6 +927,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
             </Card>
           ) : (
             <BlockStack gap="400">
+              {/* Header + close button */}
               <InlineStack align="space-between">
                 <Text as="h2" variant="headingMd">
                   {selectedProductIssues.length > 0

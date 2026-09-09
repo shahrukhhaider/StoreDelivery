@@ -212,7 +212,11 @@ function groupBySkuPrefix(
         }
       }
     } else {
-      validGroups.set(prefix, indices);
+      // No title column — only group if the group is small enough to be
+      // plausible variants (not sequential numbering like CM-001, CM-002...)
+      if (indices.length <= 20) {
+        validGroups.set(prefix, indices);
+      }
     }
   }
 

@@ -841,6 +841,92 @@ router.post("/:id/reconciliation/confirm", async (req, res, next) => {
 });
 
 /**
+ * POST /api/catalogs/:id/reconciliation/run — Trigger reconciliation without importing.
+ * Returns classification summary and diffs.
+ */
+router.post("/:id/reconciliation/run", async (req, res, next) => {
+  try {
+    const prisma = getPrisma();
+    const shopId = getShopId(req);
+    const logger = getLogger();
+
+    const catalog = await prisma.catalog.findFirst({
+      where: { id: req.params.id, shopId },
+      include: { upload: true },
+    });
+    if (!catalog) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+
+    // Get Shopify client
+    const shop = await prisma.shop.findFirst({ where: { id: shopId } });
+    if (!shop) { res.status(404).json({ error: "SHOP_NOT_FOUND" }); return; }
+
+    const { getAccessToken } = await import("../shopify/auth.js");
+    const { ShopifyGraphQLClient } = await import("../shopify/graphql-client.js");
+    const { runReconciliation } = await import("../reconciliation/reconciliation-service.js");
+    const { applyOverrides } = await import("../../engine/overrides/merge.js");
+
+    const accessToken = await getAccessToken(shop.shopDomain);
+    if (!accessToken) {
+      res.status(401).json({ error: "NO_ACCESS_TOKEN" });
+      return;
+    }
+
+    const client = new ShopifyGraphQLClient({ shopDomain: shop.shopDomain, accessToken });
+
+    // Load products with overrides applied
+    const dbProducts = await prisma.catalogProduct.findMany({
+      where: { catalogId: catalog.id },
+    });
+    const overrides = await prisma.catalogOverride.findMany({
+      where: { catalogId: catalog.id },
+    });
+    const overridesByProduct = new Map<string, Array<{ field: string; oldValue: unknown; newValue: unknown; source: string }>>();
+    for (const o of overrides) {
+      const list = overridesByProduct.get(o.productId) ?? [];
+      list.push({ field: o.field, oldValue: o.oldValue, newValue: o.newValue, source: o.source });
+      overridesByProduct.set(o.productId, list);
+    }
+
+    const catalogProducts = dbProducts.map((p) => {
+      const source = p.normalizedJson as unknown as import("../../shared/types/catalog.js").CatalogProduct;
+      const productOverrides = (overridesByProduct.get(p.id) ?? []).map((o) => ({
+        field: o.field,
+        oldValue: o.oldValue,
+        newValue: o.newValue,
+        source: o.source as "user" | "bulk_rule" | "auto_fix",
+      }));
+      return applyOverrides(source, productOverrides);
+    });
+
+    logger.info("Running on-demand reconciliation", {
+      catalogId: catalog.id,
+      productCount: catalogProducts.length,
+    });
+
+    const result = await runReconciliation(
+      shopId,
+      catalog.id,
+      catalog.schemaFingerprint,
+      catalogProducts,
+      client,
+    );
+
+    res.json({
+      catalogId: catalog.id,
+      catalogRunId: result.catalogRunId,
+      summary: result.summary,
+      diffs: result.diffs,
+      classificationsCount: result.classifications.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/catalogs/:id/reconciliation/updates — Diffs for UPDATE_REVIEW products.
  */
 router.get("/:id/reconciliation/updates", async (req, res, next) => {
@@ -1008,6 +1094,7 @@ router.post("/:id/reconciliation/updates/apply", async (req, res, next) => {
     const { ShopifyGraphQLClient } = await import("../shopify/graphql-client.js");
     const { applyProductUpdate } = await import("../shopify/update-writer.js");
     const { computeProductDiff } = await import("../../engine/reconciliation/diff-engine.js");
+    const { fetchProductDetails } = await import("../shopify/product-detail-fetcher.js");
 
     const accessToken = await getAccessToken(shop.shopDomain);
     if (!accessToken) {
@@ -1017,49 +1104,72 @@ router.post("/:id/reconciliation/updates/apply", async (req, res, next) => {
 
     const client = new ShopifyGraphQLClient({ shopDomain: shop.shopDomain, accessToken });
 
+    // Pre-fetch live Shopify data for all products in the selections batch
+    // Load all relevant RunItems in one query (avoid N+1)
+    const sourceKeys = selections.map((s) => s.sourceProductKey);
+    const allRunItems = await prisma.runItem.findMany({
+      where: {
+        catalogRunId: latestRun.id,
+        sourceProductKey: { in: sourceKeys },
+        classification: "UPDATE_REVIEW",
+      },
+    });
+    const runItemByKey = new Map(allRunItems.map((item) => [item.sourceProductKey, item]));
+
+    const shopifyIds = allRunItems
+      .map((item) => item.matchedShopifyId)
+      .filter((id): id is string => !!id);
+
+    const liveShopifyDetails = shopifyIds.length > 0
+      ? await fetchProductDetails(client, shopifyIds)
+      : new Map();
+
     let applied = 0;
     let failed = 0;
     const results: Array<{ sourceProductKey: string; success: boolean; fieldsApplied: number; error?: string }> = [];
 
     for (const sel of selections) {
-      // Find the run item
-      const runItem = await prisma.runItem.findFirst({
-        where: {
-          catalogRunId: latestRun.id,
-          sourceProductKey: sel.sourceProductKey,
-          classification: "UPDATE_REVIEW",
-        },
-      });
+      // Use pre-fetched run item (avoids N+1 queries)
+      const runItem = runItemByKey.get(sel.sourceProductKey);
       if (!runItem || !runItem.matchedShopifyId) {
         results.push({ sourceProductKey: sel.sourceProductKey, success: false, fieldsApplied: 0, error: "NOT_FOUND" });
         failed++;
         continue;
       }
 
-      // Load snapshot + supplier product to build full diff
-      const snapshot = await prisma.shopifyProductSnapshot.findFirst({
-        where: { shopId, shopifyProductId: runItem.matchedShopifyId },
-        include: { variants: true },
-      });
+      // Load supplier product
       const dbProduct = await prisma.catalogProduct.findFirst({
         where: { catalogId: catalog.id, sourceKey: sel.sourceProductKey },
       });
 
-      if (!snapshot || !dbProduct) {
-        results.push({ sourceProductKey: sel.sourceProductKey, success: false, fieldsApplied: 0, error: "SNAPSHOT_MISSING" });
+      // Use live Shopify data for diff computation (not stale snapshot)
+      const liveDetail = liveShopifyDetails.get(runItem.matchedShopifyId);
+
+      if (!liveDetail || !dbProduct) {
+        const error = !dbProduct ? "SUPPLIER_PRODUCT_MISSING" : "SHOPIFY_DETAIL_MISSING";
+        results.push({ sourceProductKey: sel.sourceProductKey, success: false, fieldsApplied: 0, error });
         failed++;
         continue;
       }
 
       const supplierProduct = dbProduct.normalizedJson as unknown as import("../../shared/types/catalog.js").CatalogProduct;
 
-      // Load variant mappings
-      const productMapping = runItem.productMappingId
+      // Load variant mappings — try by productMappingId first, then fall back to
+      // shopId+sourceProductKey lookup for LIKELY_EXISTING products that lack a stored mapping ID
+      let productMapping = runItem.productMappingId
         ? await prisma.productMapping.findUnique({
             where: { id: runItem.productMappingId },
             include: { variantMappings: true },
           })
         : null;
+
+      if (!productMapping && runItem.matchedShopifyId) {
+        // LIKELY_EXISTING: find mapping by shopify product ID
+        productMapping = await prisma.productMapping.findFirst({
+          where: { shopId, shopifyProductId: runItem.matchedShopifyId },
+          include: { variantMappings: true },
+        });
+      }
 
       const variantMappings = (productMapping?.variantMappings ?? []).map((v) => ({
         id: v.id,
@@ -1072,34 +1182,11 @@ router.post("/:id/reconciliation/updates/apply", async (req, res, next) => {
         skuSource: v.skuSource,
       }));
 
-      // Compute diff and apply merchant selections
+      // Compute diff from live Shopify data
       const diff = computeProductDiff(
         supplierProduct,
-        {
-          shopifyProductId: snapshot.shopifyProductId,
-          title: snapshot.title,
-          description: null,
-          handle: snapshot.handle,
-          vendor: snapshot.vendor,
-          productType: null,
-          status: snapshot.status,
-          tags: [],
-          images: [],
-        },
-        snapshot.variants.map((v) => ({
-          shopifyVariantId: v.shopifyVariantId,
-          shopifyProductId: v.shopifyProductId,
-          sku: v.sku,
-          barcode: v.barcode,
-          price: null,
-          compareAtPrice: null,
-          inventoryQuantity: null,
-          weight: null,
-          weightUnit: null,
-          option1: v.option1,
-          option2: v.option2,
-          option3: v.option3,
-        })),
+        liveDetail.product,
+        liveDetail.variants,
         variantMappings,
       );
 

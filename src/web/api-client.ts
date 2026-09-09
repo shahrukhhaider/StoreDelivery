@@ -584,3 +584,139 @@ export async function findSimilarIssues(
     body: JSON.stringify({ issueCode, field, sourceKey }),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Reconciliation
+// ---------------------------------------------------------------------------
+
+export type ReconciliationItem = {
+  id: string;
+  sourceProductKey: string;
+  classification: string;
+  proposedAction: string;
+  matchedShopifyId: string | null;
+  confidence: string | null;
+  matchEvidence: unknown;
+  merchantConfirmed: boolean;
+};
+
+export type ReconciliationResponse = {
+  catalogId: string;
+  hasRun: boolean;
+  catalogRunId?: string;
+  supplierProfileId?: string;
+  summary?: {
+    totalProducts: number;
+    existingMapped: number;
+    likelyExisting: number;
+    newProducts: number;
+    needsReview: number;
+    noChange: number;
+  };
+  classifications: ReconciliationItem[];
+};
+
+export async function getReconciliation(catalogId: string): Promise<ReconciliationResponse> {
+  return request(`/catalogs/${catalogId}/reconciliation`);
+}
+
+export async function runReconciliation(catalogId: string): Promise<{
+  catalogId: string;
+  catalogRunId: string;
+  summary: ReconciliationResponse["summary"];
+  diffs: ProductDiffItem[];
+}> {
+  return request(`/catalogs/${catalogId}/reconciliation/run`, { method: "POST" });
+}
+
+export async function confirmReconciliationMatches(
+  catalogId: string,
+  sourceProductKeys: string[],
+): Promise<{ confirmed: number; requested: number }> {
+  return request(`/catalogs/${catalogId}/reconciliation/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ sourceProductKeys }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Update Review (diffs for existing products)
+// ---------------------------------------------------------------------------
+
+export type FieldChangeItem = {
+  field: string;
+  shopifyValue: string | null;
+  supplierValue: string | null;
+  selected: boolean;
+};
+
+export type VariantDiffItem = {
+  sourceVariantKey: string;
+  shopifyVariantId: string | null;
+  changes: FieldChangeItem[];
+};
+
+export type ProductDiffItem = {
+  sourceProductKey: string;
+  shopifyProductId: string;
+  hasChanges: boolean;
+  productChanges: FieldChangeItem[];
+  variantChanges: VariantDiffItem[];
+};
+
+export type UpdateReviewResponse = {
+  catalogId: string;
+  catalogRunId: string;
+  totalWithChanges: number;
+  products: ProductDiffItem[];
+};
+
+export async function getUpdateReview(catalogId: string): Promise<UpdateReviewResponse> {
+  return request(`/catalogs/${catalogId}/reconciliation/updates`);
+}
+
+export type UpdateApplyResult = {
+  applied: number;
+  failed: number;
+  total: number;
+  results: Array<{
+    sourceProductKey: string;
+    success: boolean;
+    fieldsApplied: number;
+    error?: string;
+  }>;
+};
+
+export async function applyUpdates(
+  catalogId: string,
+  selections: Array<{
+    sourceProductKey: string;
+    fields: Array<{ field: string; selected: boolean }>;
+  }>,
+): Promise<UpdateApplyResult> {
+  return request(`/catalogs/${catalogId}/reconciliation/updates/apply`, {
+    method: "POST",
+    body: JSON.stringify({ selections }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Shopify Sync
+// ---------------------------------------------------------------------------
+
+export type SyncStatusResponse = {
+  syncId: string | null;
+  status: string;
+  productCount: number;
+  variantCount: number;
+  lastSyncedAt: string | null;
+  isReady: boolean;
+};
+
+export async function triggerSync(): Promise<SyncStatusResponse & { message: string }> {
+  return request("/shopify/sync", { method: "POST" });
+}
+
+export async function getSyncStatus(): Promise<SyncStatusResponse> {
+  return request("/shopify/sync/status");
+}

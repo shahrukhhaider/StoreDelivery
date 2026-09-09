@@ -813,6 +813,56 @@ router.post("/:id/edit/similar", async (req, res, next) => {
         value: "Default",
         explanation: "Set a value for the empty option.",
       };
+    } else if (body.issueCode === "TITLE_TOO_LONG") {
+      const firstAffected = resolvedProducts.find((p) => p.sourceKey === (body.sourceKey ?? affectedKeys[0]));
+      const currentTitle = firstAffected?.resolved?.title ?? "";
+      suggestedFix = {
+        field: "title",
+        value: currentTitle.slice(0, 255),
+        explanation: `Title is ${currentTitle.length} characters. Truncated to 255 characters — edit to refine.`,
+      };
+    } else if (body.issueCode === "NEGATIVE_PRICE") {
+      suggestedFix = {
+        field: "variants[0].price",
+        value: "0.00",
+        explanation: "Price cannot be negative. Set to 0 for free, or enter the correct price.",
+      };
+    } else if (body.issueCode === "OPTION_VALUE_TOO_LONG") {
+      suggestedFix = {
+        field: "variants[0].options",
+        value: "",
+        explanation: "Option value exceeds 255 characters. Shorten the value.",
+      };
+    } else if (body.issueCode === "TOO_MANY_OPTIONS") {
+      suggestedFix = {
+        field: "options",
+        value: "",
+        explanation: "Shopify allows a maximum of 3 option types (e.g. Color, Size, Material). Go back to column mappings and unmap extra option columns.",
+      };
+    } else if (body.issueCode === "TOO_MANY_VARIANTS") {
+      suggestedFix = {
+        field: "variants",
+        value: "",
+        explanation: "Shopify allows a maximum of 100 variants per product. Split this product or reduce variant combinations in the source file.",
+      };
+    } else if (body.issueCode === "DUPLICATE_OPTION_VALUES") {
+      suggestedFix = {
+        field: "variants[0].options",
+        value: "",
+        explanation: "Two variants have the same option combination. Edit one variant's options to make them unique, or remove the duplicate row from the source file.",
+      };
+    } else if (body.issueCode === "MISSING_OPTIONS") {
+      suggestedFix = {
+        field: "options",
+        value: "",
+        explanation: "Multiple variants exist but no option column is mapped. Go back to column mappings and map an option column (e.g. Color, Size), or map a parent key so each row becomes its own product.",
+      };
+    } else if (body.issueCode === "AMBIGUOUS_GROUPING") {
+      suggestedFix = {
+        field: "options",
+        value: "",
+        explanation: "Rows with the same title were grouped as variants but may be separate products. Go back to column mappings and map a parent key column (e.g. product ID, handle) to control grouping.",
+      };
     }
 
     // Detect all fields from the target product (for context in the side panel)

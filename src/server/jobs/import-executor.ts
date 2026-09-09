@@ -95,7 +95,28 @@ export async function executeImport(operationId: string): Promise<void> {
     const catalog = operation.catalog;
     const schemaFingerprint = catalog.schemaFingerprint ?? "unknown";
 
-    logger.info("Running reconciliation", { productCount: catalogProducts.length });
+    // Reuse recent reconciliation if available (avoids duplicate run when merchant
+    // already used the Updates tab which ran reconciliation within the last 15 minutes)
+    const recentRun = await prisma.catalogRun.findFirst({
+      where: {
+        catalogId: operation.catalogId,
+        shopId: operation.shopId,
+        status: "COMPLETED",
+        completedAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
+      },
+      orderBy: { completedAt: "desc" },
+      include: {
+        items: {
+          select: { sourceProductKey: true, classification: true, proposedAction: true },
+        },
+      },
+    });
+
+    logger.info(
+      recentRun ? "Reusing recent reconciliation run" : "Running fresh reconciliation",
+      { productCount: catalogProducts.length, recentRunId: recentRun?.id },
+    );
+
     const reconciliation = await runReconciliation(
       operation.shopId,
       operation.catalogId,

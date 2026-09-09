@@ -81,13 +81,25 @@ export async function processCatalog(
   }
 
   // Step 3: Group rows into products/variants
-  const { products, ambiguousGroups: _ } = groupRows(
+  const { products, ambiguousGroups } = groupRows(
     sheet,
     mappingResult.mappings,
   );
 
   // Step 4: Validate
   const validationResult = validateCatalog(products);
+
+  // Step 4b: Convert ambiguous groups into validation warnings
+  for (const group of ambiguousGroups) {
+    validationResult.issues.push({
+      severity: "warning",
+      code: "AMBIGUOUS_GROUPING",
+      message: `"${group.proposedTitle}" has ${group.rowIndices.length} rows grouped as variants — ${group.reason}. Consider mapping a parent key or option column.`,
+      sourceKey: group.proposedTitle,
+      field: "options",
+    });
+    validationResult.warningCount++;
+  }
 
   // Step 5: Build fingerprint
   const fingerprint = generateFingerprint(
