@@ -55,7 +55,6 @@ const PRODUCT_DETAILS_QUERY = `
               compareAtPrice
               inventoryQuantity
               weight
-              weightUnit
               selectedOptions {
                 name
                 value
@@ -90,7 +89,6 @@ type ShopifyProductNode = {
         compareAtPrice: string | null;
         inventoryQuantity: number | null;
         weight: number | null;
-        weightUnit: string | null;
         selectedOptions: Array<{ name: string; value: string }>;
       };
     }>;
@@ -169,7 +167,7 @@ export async function fetchProductDetails(
             compareAtPrice: v.compareAtPrice,
             inventoryQuantity: v.inventoryQuantity,
             weight: v.weight,
-            weightUnit: v.weightUnit,
+            weightUnit: null,  // weightUnit not available directly on ProductVariant in Admin API 2024-10
             option1: opts[0]?.value ?? null,
             option2: opts[1]?.value ?? null,
             option3: opts[2]?.value ?? null,

@@ -358,6 +358,7 @@ export type ImportItemEntry = {
   shopifyProductId?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  skipReason?: string | null;
 };
 
 export type ImportItemsResponse = {

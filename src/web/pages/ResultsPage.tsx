@@ -181,6 +181,10 @@ export function ResultsPage({ operationId, onBack }: Props) {
           <Text as="span" variant="bodySm" tone="critical">
             {item.errorMessage}
           </Text>
+        ) : item.skipReason ? (
+          <Text as="span" variant="bodySm" tone="subdued">
+            {item.skipReason}
+          </Text>
         ) : (
           "—"
         )}
@@ -333,7 +337,7 @@ export function ResultsPage({ operationId, onBack }: Props) {
               { title: "Action" },
               { title: "Status" },
               { title: "Shopify ID" },
-              { title: "Error" },
+              { title: "Reason" },
             ]}
             selectable={false}
           >

@@ -10,6 +10,23 @@ import { executeImport, retryFailedItems } from "../jobs/import-executor.js";
 
 const router = Router();
 
+// ---------------------------------------------------------------------------
+// Skip reason labeling (exported for testing)
+// ---------------------------------------------------------------------------
+
+export const CLASSIFICATION_LABELS: Record<string, string> = {
+  EXISTING_MAPPED: "Already in Shopify (previously imported)",
+  LIKELY_EXISTING: "Matched to existing Shopify product",
+  NO_CHANGE: "Matched — no changes detected",
+  NEEDS_REVIEW: "Ambiguous match — needs review",
+  UPDATE_REVIEW: "Updates pending merchant review",
+};
+
+export function getSkipReason(classification: string | undefined): string {
+  if (!classification) return "Skipped";
+  return CLASSIFICATION_LABELS[classification] ?? `Skipped (${classification})`;
+}
+
 /**
  * POST /api/imports/:operationId/execute — Start import execution.
  */
@@ -147,6 +164,34 @@ router.get("/:operationId/items", async (req, res, next) => {
       prisma.importItem.count({ where }),
     ]);
 
+    // Enrich skipped items with skip reason from the latest CatalogRun
+    const skippedKeys = items
+      .filter((i) => i.status === "skipped")
+      .map((i) => i.sourceProductKey);
+
+    const skipReasonMap = new Map<string, string>();
+    if (skippedKeys.length > 0) {
+      const latestRun = await prisma.catalogRun.findFirst({
+        where: { shopId, catalogId: operation.catalogId },
+        orderBy: { startedAt: "desc" },
+        select: { id: true },
+      });
+
+      if (latestRun) {
+        const runItems = await prisma.runItem.findMany({
+          where: {
+            catalogRunId: latestRun.id,
+            sourceProductKey: { in: skippedKeys },
+          },
+          select: { sourceProductKey: true, classification: true },
+        });
+
+        for (const ri of runItems) {
+          skipReasonMap.set(ri.sourceProductKey, ri.classification);
+        }
+      }
+    }
+
     res.json({
       operationId: operation.id,
       page,
@@ -161,6 +206,9 @@ router.get("/:operationId/items", async (req, res, next) => {
         shopifyProductId: item.shopifyProductId,
         errorCode: item.errorCode,
         errorMessage: item.errorMessage,
+        skipReason: item.status === "skipped"
+          ? getSkipReason(skipReasonMap.get(item.sourceProductKey))
+          : null,
       })),
     });
   } catch (err) {
