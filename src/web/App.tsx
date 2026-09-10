@@ -11,6 +11,7 @@ import { HomeIcon, ClockIcon } from "@shopify/polaris-icons";
 import enTranslations from "@shopify/polaris/locales/en.json";
 import { WelcomePage } from "./pages/WelcomePage.js";
 import { UploadPage } from "./pages/UploadPage.js";
+import { VendorConfirmPage } from "./pages/VendorConfirmPage.js";
 import { MappingPage } from "./pages/MappingPage.js";
 import { EditPage } from "./pages/EditPage.js";
 import { PreviewPage } from "./pages/PreviewPage.js";
@@ -20,6 +21,7 @@ import { HistoryPage } from "./pages/HistoryPage.js";
 type Route =
   | { page: "home" }
   | { page: "upload" }
+  | { page: "vendor-confirm"; uploadId: string; catalogId: string }
   | { page: "mapping"; uploadId: string; catalogId: string }
   | { page: "edit"; uploadId: string; catalogId: string }
   | { page: "preview"; uploadId: string; catalogId: string }
@@ -40,6 +42,13 @@ export function App() {
   const navigateToMapping = useCallback(
     (uploadId: string, catalogId: string) => {
       setRoute({ page: "mapping", uploadId, catalogId });
+    },
+    [],
+  );
+
+  const navigateToVendorConfirm = useCallback(
+    (uploadId: string, catalogId: string) => {
+      setRoute({ page: "vendor-confirm", uploadId, catalogId });
     },
     [],
   );
@@ -87,7 +96,16 @@ export function App() {
       content = <WelcomePage onStart={navigateToUpload} />;
       break;
     case "upload":
-      content = <UploadPage onComplete={navigateToMapping} />;
+      content = <UploadPage onComplete={navigateToVendorConfirm} />;
+      break;
+    case "vendor-confirm":
+      content = (
+        <VendorConfirmPage
+          catalogId={route.catalogId}
+          onComplete={(catalogId) => navigateToMapping(route.uploadId, catalogId)}
+          onBack={navigateToUpload}
+        />
+      );
       break;
     case "mapping":
       content = (

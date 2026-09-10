@@ -538,11 +538,14 @@ describe("diff — no changes", () => {
     const diff = computeProductDiff(
       supplier({ title: "Same", vendor: "Same" }),
       shopifyProduct({ title: "Same", vendor: "Same" }),
-      [], [],
+      [shopifyVariant()],
+      [variantMapping()], // V1 mapped and fields match
     );
     expect(diff.hasChanges).toBe(false);
     expect(diff.productChanges).toHaveLength(0);
-    expect(diff.variantChanges).toHaveLength(0);
+    // V1 matched and unchanged — no changed/added/discontinued entries
+    expect(diff.variantChanges.filter((v) => v.status !== "changed")).toHaveLength(0);
+    expect(diff.variantChanges.filter((v) => v.status === "changed")).toHaveLength(0);
   });
 });
 
@@ -568,7 +571,7 @@ describe("diff — default selection", () => {
 // ---------------------------------------------------------------------------
 
 describe("diff — unmapped variants", () => {
-  it("skips supplier variants without mapping", () => {
+  it("marks supplier variants without mapping as added (not silently skipped)", () => {
     const diff = computeProductDiff(
       supplier({
         title: "T", vendor: "V",
@@ -581,8 +584,10 @@ describe("diff — unmapped variants", () => {
       [shopifyVariant()],
       [variantMapping()], // only V1 is mapped
     );
-    // V-NEW has no mapping → should not appear in diff
-    expect(diff.variantChanges.every((v) => v.sourceVariantKey !== "V-NEW")).toBe(true);
+    // V-NEW has no mapping → appears as "added", not silently dropped
+    const vNew = diff.variantChanges.find((v) => v.sourceVariantKey === "V-NEW");
+    expect(vNew).toBeDefined();
+    expect(vNew?.status).toBe("added");
   });
 });
 
@@ -720,5 +725,128 @@ describe("diff — weightUnit=null from live Shopify API", () => {
     expect(weightChange).toBeDefined();
     expect(weightChange!.shopifyValue).toBe("1");
     expect(weightChange!.supplierValue).toBe("2.5");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant lifecycle — added variants
+// ---------------------------------------------------------------------------
+
+describe("diff — added variants", () => {
+  it("detects a new variant with no persisted mapping as added", () => {
+    const diff = computeProductDiff(
+      supplier({
+        title: "T", vendor: "V",
+        variants: [
+          { sourceKey: "V1", sku: "SKU-001", options: {}, price: "24.99", sourceData: {} },
+          { sourceKey: "V2", sku: "SKU-NEW", options: { Color: "Blue" }, price: "29.99", sourceData: {} },
+        ],
+      }),
+      shopifyProduct({ title: "T", vendor: "V" }),
+      [shopifyVariant()],
+      [variantMapping()], // only V1 has a mapping
+    );
+
+    expect(diff.hasChanges).toBe(true);
+    const added = diff.variantChanges.filter((v) => v.status === "added");
+    expect(added).toHaveLength(1);
+    expect(added[0].sourceVariantKey).toBe("V2");
+    expect(added[0].shopifyVariantId).toBeNull();
+    expect(added[0].changes).toHaveLength(0);
+  });
+
+  it("does not mark V1 as added when it has a mapping", () => {
+    const diff = computeProductDiff(
+      supplier({ title: "T", vendor: "V" }),
+      shopifyProduct({ title: "T", vendor: "V" }),
+      [shopifyVariant()],
+      [variantMapping()],
+    );
+
+    const added = diff.variantChanges.filter((v) => v.status === "added");
+    expect(added).toHaveLength(0);
+  });
+
+  it("marks variant as added when no mappings exist at all", () => {
+    const diff = computeProductDiff(
+      supplier({ title: "T", vendor: "V" }),
+      shopifyProduct({ title: "T", vendor: "V" }),
+      [shopifyVariant()],
+      [], // no mappings — first-time diff for this product
+    );
+
+    const added = diff.variantChanges.filter((v) => v.status === "added");
+    expect(added).toHaveLength(1);
+    expect(added[0].sourceVariantKey).toBe("V1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant lifecycle — discontinued variants
+// ---------------------------------------------------------------------------
+
+describe("diff — discontinued variants", () => {
+  it("detects a mapped variant absent from supplier file as discontinued", () => {
+    // Supplier file only has V1. V2 has a persisted mapping but is gone from the file.
+    const diff = computeProductDiff(
+      supplier({
+        title: "T", vendor: "V",
+        variants: [
+          { sourceKey: "V1", sku: "SKU-001", options: {}, price: "24.99", sourceData: {} },
+        ],
+      }),
+      shopifyProduct({ title: "T", vendor: "V" }),
+      [
+        shopifyVariant({ shopifyVariantId: "gid://shopify/ProductVariant/1" }),
+        shopifyVariant({ shopifyVariantId: "gid://shopify/ProductVariant/2", sku: "SKU-002" }),
+      ],
+      [
+        variantMapping({ sourceVariantKey: "V1", shopifyVariantId: "gid://shopify/ProductVariant/1" }),
+        variantMapping({ id: "vm-2", sourceVariantKey: "V2", sourceVariantFingerprint: "v2",
+          shopifyVariantId: "gid://shopify/ProductVariant/2", sourceSku: "SKU-002", shopifySku: "SKU-002" }),
+      ],
+    );
+
+    expect(diff.hasChanges).toBe(true);
+    const disc = diff.variantChanges.filter((v) => v.status === "discontinued");
+    expect(disc).toHaveLength(1);
+    expect(disc[0].sourceVariantKey).toBe("V2");
+    expect(disc[0].shopifyVariantId).toBe("gid://shopify/ProductVariant/2");
+    expect(disc[0].changes).toHaveLength(0);
+  });
+
+  it("does not mark present variants as discontinued", () => {
+    const diff = computeProductDiff(
+      supplier({ title: "T", vendor: "V" }),
+      shopifyProduct({ title: "T", vendor: "V" }),
+      [shopifyVariant()],
+      [variantMapping()],
+    );
+
+    const disc = diff.variantChanges.filter((v) => v.status === "discontinued");
+    expect(disc).toHaveLength(0);
+  });
+
+  it("detects both added and discontinued in same product", () => {
+    // V1 discontinued (mapping exists, absent from file), V2 new (no mapping)
+    const diff = computeProductDiff(
+      supplier({
+        title: "T", vendor: "V",
+        variants: [
+          { sourceKey: "V2", sku: "SKU-NEW", options: { Color: "Blue" }, price: "29.99", sourceData: {} },
+        ],
+      }),
+      shopifyProduct({ title: "T", vendor: "V" }),
+      [shopifyVariant()],
+      [variantMapping()], // only V1 mapped, V1 absent from supplier
+    );
+
+    expect(diff.hasChanges).toBe(true);
+    const added = diff.variantChanges.filter((v) => v.status === "added");
+    const disc = diff.variantChanges.filter((v) => v.status === "discontinued");
+    expect(added).toHaveLength(1);
+    expect(added[0].sourceVariantKey).toBe("V2");
+    expect(disc).toHaveLength(1);
+    expect(disc[0].sourceVariantKey).toBe("V1");
   });
 });

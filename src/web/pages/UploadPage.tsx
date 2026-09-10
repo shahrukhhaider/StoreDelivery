@@ -14,8 +14,11 @@ import {
   InlineStack,
   Box,
   Spinner,
+  Divider,
 } from "@shopify/polaris";
 import { uploadFile, getUpload } from "../api-client.js";
+
+type UploadMode = "CATALOG_UPDATE" | "INVENTORY_UPDATE";
 
 type Props = {
   onComplete: (uploadId: string, catalogId: string) => void;
@@ -29,6 +32,7 @@ type UploadState =
 
 export function UploadPage({ onComplete }: Props) {
   const [state, setState] = useState<UploadState>({ step: "idle" });
+  const [uploadMode, setUploadMode] = useState<UploadMode>("CATALOG_UPDATE");
 
   const handleDrop = useCallback(
     async (_droppedFiles: File[], acceptedFiles: File[]) => {
@@ -58,7 +62,7 @@ export function UploadPage({ onComplete }: Props) {
       setState({ step: "uploading", fileName: file.name });
 
       try {
-        const upload = await uploadFile(file);
+        const upload = await uploadFile(file, uploadMode);
         setState({
           step: "processing",
           uploadId: upload.id,
@@ -118,12 +122,57 @@ export function UploadPage({ onComplete }: Props) {
 
         {state.step === "idle" && (
           <Card>
-            <DropZone onDrop={handleDrop} accept=".csv,.tsv,.xlsx,.xls" variableHeight>
-              <DropZone.FileUpload
-                actionTitle="Add file"
-                actionHint="Accepts CSV and XLSX files up to 50MB"
-              />
-            </DropZone>
+            <BlockStack gap="400">
+              {/* Mode selector */}
+              <BlockStack gap="200">
+                <Text as="h3" variant="headingSm">What type of file are you uploading?</Text>
+                <BlockStack gap="100">
+                  <InlineStack gap="200" blockAlign="center">
+                    <input
+                      type="radio"
+                      id="mode-catalog"
+                      name="uploadMode"
+                      checked={uploadMode === "CATALOG_UPDATE"}
+                      onChange={() => setUploadMode("CATALOG_UPDATE")}
+                    />
+                    <label htmlFor="mode-catalog">
+                      <BlockStack gap="0">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">Full Catalog</Text>
+                        <Text as="span" variant="bodySm" tone="subdued">
+                          Create new products and update existing ones
+                        </Text>
+                      </BlockStack>
+                    </label>
+                  </InlineStack>
+                  <InlineStack gap="200" blockAlign="center">
+                    <input
+                      type="radio"
+                      id="mode-inventory"
+                      name="uploadMode"
+                      checked={uploadMode === "INVENTORY_UPDATE"}
+                      onChange={() => setUploadMode("INVENTORY_UPDATE")}
+                    />
+                    <label htmlFor="mode-inventory">
+                      <BlockStack gap="0">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">Inventory Update</Text>
+                        <Text as="span" variant="bodySm" tone="subdued">
+                          Update quantities, prices, and other fields only — never creates products
+                        </Text>
+                      </BlockStack>
+                    </label>
+                  </InlineStack>
+                </BlockStack>
+              </BlockStack>
+
+              <Divider />
+
+              <DropZone onDrop={handleDrop} accept=".csv,.tsv,.xlsx,.xls" variableHeight>
+                <DropZone.FileUpload
+                  actionTitle="Add file"
+                  actionHint="Accepts CSV and XLSX files up to 50MB"
+                />
+              </DropZone>
+            </BlockStack>
           </Card>
         )}
 

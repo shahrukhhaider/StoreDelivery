@@ -100,6 +100,7 @@ router.get("/:id/mappings", async (req, res, next) => {
 
     const catalog = await prisma.catalog.findFirst({
       where: { id: req.params.id, shopId: getShopId(req) },
+      select: { id: true, vendorId: true },
     });
     if (!catalog) {
       res.status(404).json({ error: "NOT_FOUND" });
@@ -111,8 +112,24 @@ router.get("/:id/mappings", async (req, res, next) => {
       orderBy: { sourceColumn: "asc" },
     });
 
+    // Load vendor-saved mappings if vendor is resolved — used to mark which
+    // columns were pre-populated from vendor history vs. freshly inferred.
+    const vendorMappingByColumn = new Map<string, { canonicalField: string | null; ignored: boolean }>();
+    if (catalog.vendorId) {
+      const vendorMappings = await prisma.vendorColumnMapping.findMany({
+        where: { vendorId: catalog.vendorId },
+      });
+      for (const vm of vendorMappings) {
+        vendorMappingByColumn.set(vm.sourceColumn, {
+          canonicalField: vm.canonicalField,
+          ignored: vm.ignored,
+        });
+      }
+    }
+
     res.json({
       catalogId: catalog.id,
+      vendorId: catalog.vendorId ?? null,
       mappings: mappings.map((m) => ({
         id: m.id,
         sourceColumn: m.sourceColumn,
@@ -120,6 +137,8 @@ router.get("/:id/mappings", async (req, res, next) => {
         confidence: m.confidence,
         mappingSource: m.mappingSource,
         ignored: m.ignored,
+        /** True when this mapping was pre-loaded from the vendor's saved column history. */
+        fromVendor: vendorMappingByColumn.has(m.sourceColumn),
       })),
     });
   } catch (err) {
@@ -166,6 +185,27 @@ router.put("/:id/mappings", async (req, res, next) => {
       mappingSource: "user" as const,
       ignored: m.ignored,
     }));
+
+    // Merge vendor-saved mappings for any columns the user didn't explicitly map.
+    // Vendor mappings act as defaults — user input always takes precedence.
+    const vendorId = catalog.vendorId;
+    if (vendorId) {
+      const vendorMappings = await prisma.vendorColumnMapping.findMany({
+        where: { vendorId },
+      });
+      const userColumns = new Set(userMappings.map((m) => m.sourceColumn));
+      for (const vm of vendorMappings) {
+        if (!userColumns.has(vm.sourceColumn)) {
+          userMappings.push({
+            sourceColumn: vm.sourceColumn,
+            targetField: vm.canonicalField as FieldMapping["targetField"],
+            confidence: "high" as const,
+            mappingSource: "user" as const,
+            ignored: vm.ignored,
+          });
+        }
+      }
+    }
 
     // Re-process with updated mappings
     const buffer = await storage.download(catalog.upload.storageKey);
@@ -452,6 +492,17 @@ router.post("/:id/plan", async (req, res, next) => {
     const included = products.filter((p) => p.status === "ready" || p.status === "needs_review");
     const excluded = products.filter((p) => p.status === "blocked");
 
+    // Count UPDATE_REVIEW products from the latest run
+    const latestRun = await prisma.catalogRun.findFirst({
+      where: { catalogId: catalog.id },
+      orderBy: { id: "desc" },
+    });
+    const updateReviewCount = latestRun
+      ? await prisma.runItem.count({
+          where: { catalogRunId: latestRun.id, classification: "UPDATE_REVIEW" },
+        })
+      : 0;
+
     // Count variants and images from included products
     let variantCount = 0;
     let imageCount = 0;
@@ -481,6 +532,7 @@ router.post("/:id/plan", async (req, res, next) => {
         variantCount,
         imageCount,
         skippedCount: excluded.length,
+        updateReviewCount,
         idempotencyKey,
         existing: true,
       });
@@ -505,6 +557,7 @@ router.post("/:id/plan", async (req, res, next) => {
       variantCount,
       imageCount,
       skippedCount: excluded.length,
+      updateReviewCount,
       idempotencyKey,
       existing: false,
     });
@@ -912,6 +965,8 @@ router.post("/:id/reconciliation/run", async (req, res, next) => {
       catalog.schemaFingerprint,
       catalogProducts,
       client,
+      catalog.upload?.uploadMode ?? "CATALOG_UPDATE",
+      catalog.vendorId ?? null,
     );
 
     res.json({
@@ -920,6 +975,13 @@ router.post("/:id/reconciliation/run", async (req, res, next) => {
       summary: result.summary,
       diffs: result.diffs,
       classificationsCount: result.classifications.length,
+      /** Products in vendor scope absent from this upload (Catalog Update + vendor only). */
+      missingProducts: result.classifications
+        .filter((c) => c.classification === "MISSING")
+        .map((c) => ({
+          shopifyProductId: c.matchedShopifyProductId,
+          sourceValue: c.matchEvidence[0]?.sourceValue ?? null,
+        })),
     });
   } catch (err) {
     next(err);
@@ -1227,7 +1289,9 @@ router.post("/:id/reconciliation/updates/apply", async (req, res, next) => {
       const updateResult = await applyProductUpdate(client, {
         shopifyProductId: runItem.matchedShopifyId,
         sourceProductKey: sel.sourceProductKey,
+        shopId,
         shopDomain: shop.shopDomain,
+        supplierProduct,
         productChanges,
         variantChanges,
         inventoryItemIds,
@@ -1278,6 +1342,18 @@ router.post("/:id/reconciliation/updates/apply", async (req, res, next) => {
       failed,
       total: selections.length,
     });
+
+    // Log per-product failure details so they appear in server logs
+    if (failed > 0) {
+      const failures = results.filter((r) => !r.success);
+      logger.warn("Update review — failed products", {
+        catalogId: catalog.id,
+        failures: failures.map((f) => ({
+          sourceProductKey: f.sourceProductKey,
+          error: f.error ?? "unknown",
+        })),
+      });
+    }
 
     res.json({ applied, failed, total: selections.length, results });
   } catch (err) {

@@ -496,6 +496,11 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
                       Skip {plan.skippedCount} blocked product(s)
                     </Text>
                   )}
+                  {(plan.updateReviewCount ?? 0) > 0 && (
+                    <Text as="p" variant="bodyMd" tone="caution">
+                      {plan.updateReviewCount} product{plan.updateReviewCount !== 1 ? "s" : ""} already exist in Shopify with changes — review them on the Edit page
+                    </Text>
+                  )}
                 </BlockStack>
 
                 {/* SKU Summary in Import Plan */}
@@ -527,7 +532,10 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
 
                 <Divider />
                 <Text as="p" variant="bodySm" tone="subdued">
-                  Existing products will not be modified.
+                  {(plan.updateReviewCount ?? 0) > 0
+                    ? `${plan.updateReviewCount} existing product${plan.updateReviewCount !== 1 ? "s" : ""} with differences will not be modified. Go back to the Edit page to review and apply those updates.`
+                    : "Existing products will not be modified."
+                  }
                 </Text>
               </BlockStack>
             </Modal.Section>

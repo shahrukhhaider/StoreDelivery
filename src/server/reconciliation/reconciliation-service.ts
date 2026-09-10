@@ -14,6 +14,7 @@ import { getLogger } from "../logger.js";
 import { ShopifyGraphQLClient } from "../shopify/graphql-client.js";
 import { fetchShopifyIdentityIndex, fetchTargetedIdentityIndex } from "../shopify/duplicate-detector.js";
 import { fetchProductDetails } from "../shopify/product-detail-fetcher.js";
+import { fetchVendorScopedProducts } from "../shopify/vendor-scope-fetcher.js";
 import { classifyProducts, type ClassifyProductsInput } from "../../engine/reconciliation/reconciliation-engine.js";
 import { computeProductFingerprint } from "../../engine/reconciliation/product-fingerprint.js";
 import { computeProductDiff } from "../../engine/reconciliation/diff-engine.js";
@@ -62,6 +63,8 @@ export async function runReconciliation(
   schemaFingerprint: string,
   products: CatalogProduct[],
   client: ShopifyGraphQLClient,
+  uploadMode: "CATALOG_UPDATE" | "INVENTORY_UPDATE" = "CATALOG_UPDATE",
+  vendorId: string | null = null,
 ): Promise<ReconciliationResult> {
   const prisma = getPrisma();
   const logger = getLogger();
@@ -117,22 +120,40 @@ export async function runReconciliation(
     shopifyIndex,
   });
 
+  // Step 4b: Inventory Update mode gate
+  // Force NEW_PRODUCT → SKIP. Inventory Updates never create products.
+  // Absent rows carry no meaning — do not compute MISSING.
+  const gatedClassifications = uploadMode === "INVENTORY_UPDATE"
+    ? classifications.map((c) => {
+        if (c.classification === "NEW_PRODUCT") {
+          return {
+            ...c,
+            classification: "NEEDS_REVIEW" as const,
+            proposedAction: "SKIP" as const,
+            confidence: null,
+            matchEvidence: [],
+          };
+        }
+        return c;
+      })
+    : classifications;
+
   // Step 5: For EXISTING_MAPPED products, fetch live Shopify data and compute diffs.
   // Products with changes → UPDATE_REVIEW, no changes → NO_CHANGE.
   const diffs: ProductDiff[] = [];
 
-  const mappedClassifications = classifications.filter(
+  const mappedClassifications = gatedClassifications.filter(
     (c) => c.classification === "EXISTING_MAPPED" && c.matchedShopifyProductId,
   );
 
   // Also include LIKELY_EXISTING with HIGH confidence (auto-matched to Shopify)
-  const likelyHighClassifications = classifications.filter(
+  const likelyHighClassifications = gatedClassifications.filter(
     (c) => c.classification === "LIKELY_EXISTING" && c.matchedShopifyProductId && c.confidence === "HIGH",
   );
 
   const allMatchedClassifications = [...mappedClassifications, ...likelyHighClassifications];
 
-  let finalClassifications = classifications;
+  let finalClassifications = gatedClassifications;
 
   if (allMatchedClassifications.length > 0) {
     // Fetch full product details from live Shopify API
@@ -218,7 +239,7 @@ export async function runReconciliation(
     });
   } else {
     // No matched products — just reclassify
-    finalClassifications = classifications.map((c) => {
+    finalClassifications = gatedClassifications.map((c) => {
       if (c.classification === "EXISTING_MAPPED") {
         return { ...c, classification: "NO_CHANGE" as const, proposedAction: "NO_CHANGE" as const };
       }
@@ -233,9 +254,55 @@ export async function runReconciliation(
     newProducts: finalClassifications.filter((c) => c.classification === "NEW_PRODUCT").length,
     needsReview: finalClassifications.filter((c) => c.classification === "NEEDS_REVIEW").length,
     noChange: finalClassifications.filter((c) => c.classification === "NO_CHANGE").length,
+    missing: 0,
   };
 
-  // Step 6: Create CatalogRun + RunItems
+  // Step 5b: MISSING classification (Catalog Update + vendor assigned only)
+  const missingClassifications: import("@shared/types/reconciliation.js").ProductClassification[] = [];
+  if (uploadMode === "CATALOG_UPDATE" && vendorId) {
+    try {
+      const vendorScopedProducts = await fetchVendorScopedProducts(client, vendorId);
+      const matchedShopifyIds = new Set(
+        finalClassifications
+          .map((c) => c.matchedShopifyProductId)
+          .filter((id): id is string => !!id),
+      );
+      for (const [shopifyProductId, { title }] of vendorScopedProducts) {
+        if (!matchedShopifyIds.has(shopifyProductId)) {
+          missingClassifications.push({
+            sourceProductKey: `__missing__:${shopifyProductId}`,
+            classification: "MISSING",
+            proposedAction: "NO_CHANGE",
+            matchedShopifyProductId: shopifyProductId,
+            productMappingId: null,
+            confidence: "HIGH",
+            matchEvidence: [{
+              type: "persisted_mapping" as const,
+              sourceValue: title,
+              shopifyProductId,
+              confidence: "HIGH",
+            }],
+          });
+        }
+      }
+      finalSummary.missing = missingClassifications.length;
+      finalSummary.totalProducts += missingClassifications.length;
+      logger.info("MISSING products detected", {
+        vendorId,
+        vendorScopeSize: vendorScopedProducts.size,
+        matched: matchedShopifyIds.size,
+        missing: missingClassifications.length,
+      });
+    } catch (err) {
+      logger.warn("Failed to compute MISSING products — skipping", {
+        vendorId,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  const allClassifications = [...finalClassifications, ...missingClassifications];
+
   const catalogRun = await prisma.catalogRun.create({
     data: {
       supplierProfileId: profile.id,
@@ -252,10 +319,10 @@ export async function runReconciliation(
     },
   });
 
-  // Batch-insert run items
-  if (finalClassifications.length > 0) {
+  // Batch-insert run items (includes MISSING classifications)
+  if (allClassifications.length > 0) {
     await prisma.runItem.createMany({
-      data: finalClassifications.map((c) => ({
+      data: allClassifications.map((c) => ({
         catalogRunId: catalogRun.id,
         sourceProductKey: c.sourceProductKey,
         classification: c.classification as never,
@@ -288,7 +355,7 @@ export async function runReconciliation(
   return {
     catalogRunId: catalogRun.id,
     supplierProfileId: profile.id,
-    classifications: finalClassifications,
+    classifications: allClassifications,
     summary: finalSummary,
     diffs,
   };
@@ -510,19 +577,34 @@ async function resolveSupplierProfile(
 ): Promise<{ id: string; name: string }> {
   const prisma = getPrisma();
 
-  const existing = await prisma.supplierProfile.findUnique({
-    where: {
-      shopId_schemaFingerprint: { shopId, schemaFingerprint },
-    },
+  // Find by schemaFingerprint — no longer a unique key, use findFirst
+  const existing = await prisma.supplierProfile.findFirst({
+    where: { shopId, schemaFingerprint },
     select: { id: true, name: true },
   });
 
   if (existing) return existing;
 
+  // Auto-create a placeholder vendor profile keyed by fingerprint.
+  // The merchant can rename it on the Vendor Confirm page.
+  const autoName = `Supplier ${schemaFingerprint.slice(0, 8)}`;
+  const normalizedName = autoName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+  // Handle collision: if another profile has the same normalizedName, append a suffix
+  const conflicting = await prisma.supplierProfile.findFirst({
+    where: { shopId, normalizedName },
+    select: { id: true },
+  });
+
+  const finalNormalizedName = conflicting
+    ? `${normalizedName}-${schemaFingerprint.slice(0, 6)}`
+    : normalizedName;
+
   const created = await prisma.supplierProfile.create({
     data: {
       shopId,
-      name: `Supplier ${schemaFingerprint.slice(0, 8)}`,
+      name: autoName,
+      normalizedName: finalNormalizedName,
       schemaFingerprint,
     },
     select: { id: true, name: true },

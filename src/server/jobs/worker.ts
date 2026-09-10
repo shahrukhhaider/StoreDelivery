@@ -94,7 +94,7 @@ async function processNextUpload(): Promise<void> {
 
     const { catalog, mappingResult } = result;
 
-    // Persist catalog
+    // Persist catalog — carry uploadMode from the upload record
     const dbCatalog = await prisma.catalog.create({
       data: {
         shopId: pending.shopId,

@@ -55,6 +55,7 @@ export function classifyProducts(
     newProducts: 0,
     needsReview: 0,
     noChange: 0,
+    missing: 0, // MISSING is computed in the service layer, not the pure engine
   };
 
   for (const product of input.products) {
@@ -336,5 +337,6 @@ function computeSummary(classifications: ProductClassification[]): Reconciliatio
     newProducts: classifications.filter((c) => c.classification === "NEW_PRODUCT").length,
     needsReview: classifications.filter((c) => c.classification === "NEEDS_REVIEW").length,
     noChange: classifications.filter((c) => c.classification === "NO_CHANGE").length,
+    missing: 0,
   };
 }

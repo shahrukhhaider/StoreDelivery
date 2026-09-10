@@ -75,6 +75,10 @@ router.post("/", upload.single("file"), async (req, res, next) => {
     });
 
     // Create DB record
+    const uploadMode = req.body.uploadMode === "INVENTORY_UPDATE"
+      ? "INVENTORY_UPDATE" as const
+      : "CATALOG_UPDATE" as const;
+
     const uploadRecord = await prisma.catalogUpload.create({
       data: {
         shopId,
@@ -82,6 +86,7 @@ router.post("/", upload.single("file"), async (req, res, next) => {
         storageKey,
         format,
         status: "pending",
+        uploadMode,
       },
     });
 

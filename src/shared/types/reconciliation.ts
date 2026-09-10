@@ -28,7 +28,8 @@ export type ReconciliationClassification =
   | "NEW_PRODUCT"      // no match — candidate for creation
   | "NEEDS_REVIEW"     // ambiguous or low-confidence match
   | "UPDATE_REVIEW"    // mapped product with field-level changes
-  | "NO_CHANGE";       // re-upload of identical data
+  | "NO_CHANGE"        // re-upload of identical data
+  | "MISSING";         // in vendor's Shopify scope but absent from this full catalog
 
 // ---------------------------------------------------------------------------
 // Proposed action
@@ -93,6 +94,8 @@ export type ReconciliationSummary = {
   newProducts: number;
   needsReview: number;
   noChange: number;
+  /** Products in the vendor's Shopify scope that were absent from this upload. */
+  missing: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -154,6 +157,13 @@ export type VariantDiff = {
   sourceVariantKey: string;
   shopifyVariantId: string | null;
   changes: FieldChange[];
+  /**
+   * Variant lifecycle status:
+   * - "changed"      — existing variant with field-level changes (default)
+   * - "added"        — in supplier file but no persisted mapping → new variant to add
+   * - "discontinued" — has persisted mapping but absent from supplier file → no longer supplied
+   */
+  status?: "changed" | "added" | "discontinued";
 };
 
 /** Full diff for a product: product-level + variant-level changes. */

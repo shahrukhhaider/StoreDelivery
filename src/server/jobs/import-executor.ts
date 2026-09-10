@@ -25,7 +25,15 @@ export async function executeImport(operationId: string): Promise<void> {
   // Load operation
   const operation = await prisma.importOperation.findUnique({
     where: { id: operationId },
-    include: { shop: true, catalog: true },
+    include: {
+      shop: true,
+      catalog: {
+        include: {
+          upload: { select: { uploadMode: true } },
+          vendor: { select: { id: true, normalizedName: true } },
+        },
+      },
+    },
   });
 
   if (!operation) {
@@ -123,6 +131,8 @@ export async function executeImport(operationId: string): Promise<void> {
       schemaFingerprint,
       catalogProducts,
       client,
+      operation.catalog.upload?.uploadMode ?? "CATALOG_UPDATE",
+      operation.catalog.vendor?.id ?? null,
     );
 
     logger.info("Reconciliation complete", {
@@ -218,6 +228,8 @@ export async function executeImport(operationId: string): Promise<void> {
     const results = await writeProducts(client, productsToWrite, {
       locationId,
       shopDomain: operation.shop.shopDomain,
+      vendorProfileId: operation.catalog.vendor?.id ?? null,
+      vendorNormalizedName: operation.catalog.vendor?.normalizedName ?? null,
       onItemComplete: async (result: WriteResult) => {
         // Update import item in DB
         await prisma.importItem.updateMany({
@@ -311,6 +323,13 @@ export async function executeImport(operationId: string): Promise<void> {
       failedCount,
       skippedCount: toSkip.length,
     });
+
+    // Save vendor column mappings after a successful Catalog Update.
+    // Inventory Updates reuse the mapping but never overwrite it.
+    if (finalStatus === "completed" &&
+        (operation.catalog.upload?.uploadMode ?? "CATALOG_UPDATE") === "CATALOG_UPDATE") {
+      await saveVendorColumnMappings(operation.catalogId, logger, prisma);
+    }
   } catch (err) {
     logger.error("Import execution failed", {
       operationId,
@@ -336,7 +355,10 @@ export async function retryFailedItems(operationId: string): Promise<void> {
 
   const operation = await prisma.importOperation.findUnique({
     where: { id: operationId },
-    include: { shop: true },
+    include: {
+      shop: true,
+      catalog: { include: { vendor: { select: { id: true, normalizedName: true } } } },
+    },
   });
 
   if (!operation) {
@@ -379,12 +401,10 @@ export async function retryFailedItems(operationId: string): Promise<void> {
     select: { schemaFingerprint: true },
   });
   const supplierProfile = catalog
-    ? await prisma.supplierProfile.findUnique({
+    ? await prisma.supplierProfile.findFirst({
         where: {
-          shopId_schemaFingerprint: {
-            shopId: operation.shopId,
-            schemaFingerprint: catalog.schemaFingerprint,
-          },
+          shopId: operation.shopId,
+          schemaFingerprint: catalog.schemaFingerprint,
         },
         select: { id: true },
       })
@@ -421,6 +441,8 @@ export async function retryFailedItems(operationId: string): Promise<void> {
   await writeProducts(client, productsToRetry, {
     locationId,
     shopDomain: operation.shop.shopDomain,
+    vendorProfileId: operation.catalog?.vendor?.id ?? null,
+    vendorNormalizedName: operation.catalog?.vendor?.normalizedName ?? null,
     onItemComplete: async (result: WriteResult) => {
       await prisma.importItem.updateMany({
         where: {
@@ -470,4 +492,87 @@ export async function retryFailedItems(operationId: string): Promise<void> {
   });
 
   logger.info("Retry complete", { operationId, successCount, failedCount });
+}
+
+// ---------------------------------------------------------------------------
+// Save vendor column mappings after successful import
+// ---------------------------------------------------------------------------
+
+/**
+ * After a successful Catalog Update, persist the catalog's confirmed FieldMapping
+ * records as VendorColumnMapping for the catalog's resolved vendor.
+ *
+ * This enables subsequent uploads from the same vendor to pre-load the correct
+ * column mapping automatically instead of starting from scratch.
+ */
+async function saveVendorColumnMappings(
+  catalogId: string,
+  logger: ReturnType<typeof getLogger>,
+  prisma: ReturnType<typeof import("../db.js").getPrisma>,
+): Promise<void> {
+  try {
+    // Load the catalog's vendor assignment
+    const catalog = await prisma.catalog.findUnique({
+      where: { id: catalogId },
+      select: { vendorId: true },
+    });
+
+    if (!catalog?.vendorId) {
+      // No vendor assigned — nothing to persist
+      return;
+    }
+
+    const vendorId = catalog.vendorId;
+
+    // Load confirmed field mappings for this catalog
+    const fieldMappings = await prisma.fieldMapping.findMany({
+      where: { catalogId, ignored: false },
+    });
+
+    if (fieldMappings.length === 0) return;
+
+    // Upsert each as a VendorColumnMapping — overwrites any previous mapping
+    // for this vendor so the latest confirmed schema is always current.
+    let saved = 0;
+    for (const fm of fieldMappings) {
+      await prisma.vendorColumnMapping.upsert({
+        where: { vendorId_sourceColumn: { vendorId, sourceColumn: fm.sourceColumn } },
+        create: {
+          vendorId,
+          sourceColumn: fm.sourceColumn,
+          canonicalField: fm.targetField,
+          ignored: false,
+        },
+        update: {
+          canonicalField: fm.targetField,
+          ignored: false,
+        },
+      });
+      saved++;
+    }
+
+    // Also update the vendor's schemaFingerprint to the current catalog's fingerprint
+    const catalogWithFingerprint = await prisma.catalog.findUnique({
+      where: { id: catalogId },
+      select: { schemaFingerprint: true },
+    });
+    if (catalogWithFingerprint?.schemaFingerprint) {
+      await prisma.supplierProfile.update({
+        where: { id: vendorId },
+        data: { schemaFingerprint: catalogWithFingerprint.schemaFingerprint },
+      });
+    }
+
+    logger.info("Vendor column mappings saved after successful import", {
+      catalogId,
+      vendorId,
+      mappingCount: saved,
+    });
+  } catch (err) {
+    // Non-fatal — log but don't fail the import over mapping persistence
+    logger.error("Failed to save vendor column mappings", {
+      catalogId,
+      error: (err as Error).message,
+    });
+  }
 }

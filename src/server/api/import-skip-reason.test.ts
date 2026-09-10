@@ -64,7 +64,7 @@ describe("getSkipReason", () => {
   });
 
   it("returns correct label for UPDATE_REVIEW", () => {
-    expect(getSkipReason("UPDATE_REVIEW")).toBe("Updates pending merchant review");
+    expect(getSkipReason("UPDATE_REVIEW")).toBe("Already in Shopify — review updates on the Edit page");
   });
 
   it("returns 'Skipped' when classification is undefined (no run found)", () => {

@@ -83,9 +83,13 @@ export type UploadResponse = {
   createdAt?: string;
 };
 
-export async function uploadFile(file: File): Promise<UploadResponse> {
+export async function uploadFile(
+  file: File,
+  uploadMode: "CATALOG_UPDATE" | "INVENTORY_UPDATE" = "CATALOG_UPDATE",
+): Promise<UploadResponse> {
   const form = new FormData();
   form.append("file", file);
+  form.append("uploadMode", uploadMode);
 
   const headers: Record<string, string> = {};
   const token = await getSessionToken();
@@ -146,15 +150,70 @@ export type MappingItem = {
   confidence: string;
   mappingSource: string;
   ignored: boolean;
+  /** True when this mapping was pre-loaded from the vendor's saved column history. */
+  fromVendor?: boolean;
 };
 
 export type MappingsResponse = {
   catalogId: string;
+  vendorId: string | null;
   mappings: MappingItem[];
 };
 
 export async function getMappings(catalogId: string): Promise<MappingsResponse> {
   return request(`/catalogs/${catalogId}/mappings`);
+}
+
+// ---------------------------------------------------------------------------
+// Vendor API
+// ---------------------------------------------------------------------------
+
+export type VendorItem = {
+  id: string;
+  name: string;
+  normalizedName: string;
+  schemaFingerprint: string | null;
+};
+
+export type VendorDetectionResult = {
+  confidence: "HIGH" | "MEDIUM" | "NONE";
+  matchedVendorId: string | null;
+  matchedVendorName: string | null;
+  candidateVendorName: string | null;
+  matchSource: "schema_fingerprint" | "vendor_column_exact" | "vendor_column_partial" | "none";
+};
+
+export async function getVendors(): Promise<{ vendors: VendorItem[] }> {
+  return request("/vendors");
+}
+
+export async function createVendor(name: string): Promise<{ vendor: VendorItem }> {
+  return request("/vendors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function detectCatalogVendor(catalogId: string): Promise<VendorDetectionResult> {
+  return request(`/catalogs/${catalogId}/vendor/detect`);
+}
+
+export async function assignCatalogVendor(
+  catalogId: string,
+  payload: { vendorId: string } | { vendorName: string },
+): Promise<{ vendorId: string; vendor: VendorItem }> {
+  return request(`/catalogs/${catalogId}/vendor`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getCatalogVendor(
+  catalogId: string,
+): Promise<{ vendorId: string | null; vendor: VendorItem | null }> {
+  return request(`/catalogs/${catalogId}/vendor`);
 }
 
 export type MappingUpdate = {
@@ -305,6 +364,8 @@ export type PlanResponse = {
   variantCount: number;
   imageCount: number;
   skippedCount?: number;
+  /** Products that already exist in Shopify with field differences — handled via the Updates tab. */
+  updateReviewCount?: number;
   successCount?: number;
   failedCount?: number;
   idempotencyKey?: string;
@@ -630,6 +691,8 @@ export async function runReconciliation(catalogId: string): Promise<{
   catalogRunId: string;
   summary: ReconciliationResponse["summary"];
   diffs: ProductDiffItem[];
+  /** Products in vendor scope absent from this upload (Catalog Update + vendor only). */
+  missingProducts?: Array<{ shopifyProductId: string | null; sourceValue: string | null }>;
 }> {
   return request(`/catalogs/${catalogId}/reconciliation/run`, { method: "POST" });
 }
@@ -659,6 +722,7 @@ export type VariantDiffItem = {
   sourceVariantKey: string;
   shopifyVariantId: string | null;
   changes: FieldChangeItem[];
+  status?: "changed" | "added" | "discontinued";
 };
 
 export type ProductDiffItem = {

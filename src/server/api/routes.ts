@@ -8,6 +8,7 @@ import { catalogRouter } from "./catalog.js";
 import { importRouter } from "./import.js";
 import { editRouter } from "./edit.js";
 import { syncRouter } from "./sync.js";
+import { vendorRouter } from "./vendor.js";
 import { shopScope } from "./middleware.js";
 
 const apiRouter = Router();
@@ -21,6 +22,8 @@ apiRouter.use("/catalogs", catalogRouter);
 apiRouter.use("/catalogs", editRouter);
 apiRouter.use("/imports", importRouter);
 apiRouter.use("/shopify", syncRouter);
+apiRouter.use("/vendors", vendorRouter);
+apiRouter.use("/catalogs", vendorRouter);
 
 /**
  * GET /api/history — List past uploads with linked catalog + import status.

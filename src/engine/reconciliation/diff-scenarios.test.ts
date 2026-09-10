@@ -425,3 +425,55 @@ describe("Scenario: Shopify detail fetch fails", () => {
     expect(diffs).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Inventory Update mode gate — NEW_PRODUCT must be forced to SKIP/NEEDS_REVIEW
+// ---------------------------------------------------------------------------
+
+describe("Inventory Update mode gate", () => {
+  function applyInventoryUpdateGate(
+    classifications: import("@shared/types/reconciliation.js").ProductClassification[],
+  ) {
+    return classifications.map((c) => {
+      if (c.classification === "NEW_PRODUCT") {
+        return {
+          ...c,
+          classification: "NEEDS_REVIEW" as const,
+          proposedAction: "SKIP" as const,
+          confidence: null,
+          matchEvidence: [],
+        };
+      }
+      return c;
+    });
+  }
+
+  it("forces NEW_PRODUCT to NEEDS_REVIEW+SKIP in Inventory Update mode", () => {
+    const raw = classifyProducts({
+      products: [makeProduct({ sourceKey: "brand-new" })],
+      existingMappings: new Map(),
+      shopifyIndex: emptyIndex(),
+    });
+
+    expect(raw.classifications[0].classification).toBe("NEW_PRODUCT");
+
+    const gated = applyInventoryUpdateGate(raw.classifications);
+    expect(gated[0].classification).toBe("NEEDS_REVIEW");
+    expect(gated[0].proposedAction).toBe("SKIP");
+  });
+
+  it("does not touch EXISTING_MAPPED in Inventory Update mode", () => {
+    const existing = makeMapping("classic-tee", "gid://shopify/Product/1");
+    const raw = classifyProducts({
+      products: [makeProduct({ sourceKey: "classic-tee" })],
+      existingMappings: new Map([["classic-tee", existing]]),
+      shopifyIndex: emptyIndex(),
+    });
+
+    expect(raw.classifications[0].classification).toBe("EXISTING_MAPPED");
+
+    const gated = applyInventoryUpdateGate(raw.classifications);
+    expect(gated[0].classification).toBe("EXISTING_MAPPED");
+    expect(gated[0].proposedAction).toBe("NO_CHANGE");
+  });
+});

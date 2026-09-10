@@ -13,6 +13,8 @@
 
 import { ShopifyGraphQLClient, type GraphQLResponse } from "./graphql-client.js";
 import { getPrimaryLocationId } from "./writer.js";
+import { getPrisma } from "../db.js";
+import { computeVariantFingerprint } from "../../engine/sku/variant-fingerprint.js";
 import { getLogger } from "../logger.js";
 import type { FieldChange, VariantDiff } from "@shared/types/reconciliation.js";
 
@@ -23,8 +25,12 @@ import type { FieldChange, VariantDiff } from "@shared/types/reconciliation.js";
 export type UpdateRequest = {
   shopifyProductId: string;
   sourceProductKey: string;
+  /** Shop ID — needed to persist variant mappings for added variants. */
+  shopId: string;
   /** Shop domain — needed to resolve primary location for inventory updates. */
   shopDomain: string;
+  /** Full supplier product — needed to get variant data for added variants. */
+  supplierProduct: import("@shared/types/catalog.js").CatalogProduct;
   productChanges: FieldChange[];
   variantChanges: VariantDiff[];
   /**
@@ -124,6 +130,26 @@ const PRODUCT_VARIANTS_BULK_UPDATE_MUTATION = `
 `;
 
 // ---------------------------------------------------------------------------
+// Mutation 5 — productVariantsBulkCreate (add new variants to existing product)
+// ---------------------------------------------------------------------------
+
+const PRODUCT_VARIANTS_BULK_CREATE_MUTATION = `
+  mutation ProductVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+    productVariantsBulkCreate(productId: $productId, variants: $variants) {
+      productVariants {
+        id
+        sku
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -157,11 +183,16 @@ export async function applyProductUpdate(
   const selectedProductChanges = request.productChanges.filter((c) => c.selected);
   const selectedVariantChanges = request.variantChanges
     .map((v) => ({ ...v, changes: v.changes.filter((c) => c.selected) }))
-    .filter((v) => v.changes.length > 0);
+    // Keep variants with selected field changes OR lifecycle status (added/discontinued)
+    .filter((v) => v.changes.length > 0 || v.status === "added" || v.status === "discontinued");
 
   const totalSelected =
     selectedProductChanges.length +
-    selectedVariantChanges.reduce((sum, v) => sum + v.changes.length, 0);
+    selectedVariantChanges.reduce((sum, v) => {
+      // Added/discontinued each count as 1 action even though changes[] is empty
+      if (v.status === "added" || v.status === "discontinued") return sum + 1;
+      return sum + v.changes.length;
+    }, 0);
 
   if (totalSelected === 0) {
     return {
@@ -488,6 +519,97 @@ export async function applyProductUpdate(
   }
 
   // -------------------------------------------------------------------------
+  // Mutation 5 — productVariantsBulkCreate (add new variants)
+  // -------------------------------------------------------------------------
+
+  const addedVariantDiffs = selectedVariantChanges.filter((v) => v.status === "added");
+
+  if (addedVariantDiffs.length > 0) {
+    // Build supplier variant lookup from the full supplier product
+    const supplierVariantByKey = new Map(
+      request.supplierProduct.variants.map((v) => [v.sourceKey, v]),
+    );
+
+    const newVariants: Array<Record<string, unknown>> = [];
+
+    for (const variantDiff of addedVariantDiffs) {
+      const sv = supplierVariantByKey.get(variantDiff.sourceVariantKey);
+      if (!sv) continue;
+
+      const v: Record<string, unknown> = {};
+      if (sv.price != null) v.price = sv.price;
+      if (sv.compareAtPrice != null) v.compareAtPrice = sv.compareAtPrice;
+      if (sv.barcode != null) v.barcode = sv.barcode;
+      if (sv.sku != null) v.sku = sv.sku;
+
+      // Option values — required to distinguish variants in Shopify
+      if (sv.options && Object.keys(sv.options).length > 0) {
+        v.optionValues = Object.entries(sv.options).map(([name, value]) => ({
+          name: value,
+          optionName: name,
+        }));
+      }
+
+      // Inventory item (cost + weight)
+      const invInput: Record<string, unknown> = {};
+      if (sv.cost != null) invInput.cost = sv.cost;
+      if (sv.weight != null && sv.weightUnit != null) {
+        invInput.measurement = { weight: { value: sv.weight, unit: sv.weightUnit.toUpperCase() } };
+      }
+      if (Object.keys(invInput).length > 0) v.inventoryItem = invInput;
+
+      if (sv.taxable != null) v.taxable = sv.taxable;
+      if (sv.inventoryPolicy != null) v.inventoryPolicy = sv.inventoryPolicy.toUpperCase();
+
+      newVariants.push(v);
+    }
+
+    if (newVariants.length > 0) {
+      try {
+        const res = await client.query<{
+          productVariantsBulkCreate: {
+            productVariants: Array<{ id: string; sku: string | null }> | null;
+            userErrors: Array<{ field: string[]; message: string; code: string }>;
+          };
+        }>(
+          PRODUCT_VARIANTS_BULK_CREATE_MUTATION,
+          { productId: request.shopifyProductId, variants: newVariants },
+          "ProductVariantsBulkCreate",
+        );
+
+        const userErrors = res.data?.productVariantsBulkCreate?.userErrors ?? [];
+        if (userErrors.length > 0) {
+          logger.warn("productVariantsBulkCreate validation error", {
+            sourceProductKey: request.sourceProductKey,
+            errors: userErrors,
+          });
+        } else {
+          const createdVariants = res.data?.productVariantsBulkCreate?.productVariants ?? [];
+          logger.info("New variants added to product", {
+            sourceProductKey: request.sourceProductKey,
+            count: createdVariants.length,
+          });
+
+          // Persist variant mappings for newly created variants so subsequent
+          // uploads diff them correctly instead of re-showing them as "added".
+          await persistAddedVariantMappings(
+            request.shopId,
+            request.shopifyProductId,
+            request.supplierProduct,
+            addedVariantDiffs.map((v) => v.sourceVariantKey),
+            createdVariants,
+          );
+        }
+      } catch (err) {
+        logger.warn("productVariantsBulkCreate failed", {
+          sourceProductKey: request.sourceProductKey,
+          error: (err as Error).message,
+        });
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Done
   // -------------------------------------------------------------------------
 
@@ -503,4 +625,93 @@ export async function applyProductUpdate(
     success: true,
     fieldsApplied: totalSelected,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Persist variant mappings for newly added variants
+// ---------------------------------------------------------------------------
+
+/**
+ * After a successful productVariantsBulkCreate, persist CatalogVariantMapping
+ * records for each new variant so subsequent uploads can diff them correctly
+ * instead of re-showing them as "added".
+ *
+ * @param shopId         - Shop ID
+ * @param shopifyProductId - GID of the product the variants were added to
+ * @param supplierProduct  - Full supplier product (source of variant data)
+ * @param addedSourceKeys  - sourceVariantKeys that were just created (in order)
+ * @param createdVariants  - Shopify response: [{id, sku}] (in same order)
+ */
+async function persistAddedVariantMappings(
+  shopId: string,
+  shopifyProductId: string,
+  supplierProduct: import("@shared/types/catalog.js").CatalogProduct,
+  addedSourceKeys: string[],
+  createdVariants: Array<{ id: string; sku: string | null }>,
+): Promise<void> {
+  const logger = getLogger();
+  const prisma = getPrisma();
+
+  // Build lookup: sourceVariantKey → CatalogVariant + index in the full product
+  const variantByKey = new Map(
+    supplierProduct.variants.map((v, i) => [v.sourceKey, { variant: v, index: i }]),
+  );
+
+  for (let i = 0; i < addedSourceKeys.length; i++) {
+    const sourceKey = addedSourceKeys[i];
+    const shopifyVariant = createdVariants[i];
+    if (!sourceKey || !shopifyVariant) continue;
+
+    const entry = variantByKey.get(sourceKey);
+    if (!entry) continue;
+
+    const fingerprint = computeVariantFingerprint(
+      supplierProduct.sourceKey,
+      entry.variant,
+      entry.index,
+    );
+
+    const sourceSku = entry.variant.sku?.trim() || null;
+    const shopifySku = shopifyVariant.sku || null;
+    const skuSource: "SUPPLIER" | "MERCHANT" | "STOREDELIVERY_GENERATED" | "NONE" =
+      entry.variant.skuSource ?? (sourceSku ? "SUPPLIER" : "NONE");
+
+    try {
+      await prisma.catalogVariantMapping.upsert({
+        where: { shopId_sourceVariantFingerprint: { shopId, sourceVariantFingerprint: fingerprint } },
+        create: {
+          shopId,
+          sourceProductKey: supplierProduct.sourceKey,
+          sourceVariantKey: sourceKey,
+          sourceVariantFingerprint: fingerprint,
+          shopifyProductId,
+          shopifyVariantId: shopifyVariant.id,
+          sourceSku,
+          shopifySku,
+          skuSource,
+        },
+        update: {
+          shopifyProductId,
+          shopifyVariantId: shopifyVariant.id,
+          sourceVariantKey: sourceKey,
+          sourceSku,
+          shopifySku,
+          skuSource,
+        },
+      });
+    } catch (err) {
+      logger.error("Failed to persist added variant mapping", {
+        shopId,
+        sourceVariantKey: sourceKey,
+        fingerprint,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  logger.debug("Added variant mappings persisted", {
+    shopId,
+    shopifyProductId,
+    count: addedSourceKeys.length,
+  });
 }

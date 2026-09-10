@@ -91,6 +91,13 @@ export type WriterOptions = {
   locationId: string | null;
   /** Shop domain — used for location cache key */
   shopDomain: string;
+  /**
+   * Vendor profile ID to write as app-owned metafield on created products.
+   * Also appended as a `storedelivery:vendor:<normalizedName>` tag.
+   */
+  vendorProfileId?: string | null;
+  /** Normalized vendor name slug — used to build the vendor tag. */
+  vendorNormalizedName?: string | null;
   /** Callback after each product write (for progress tracking) */
   onItemComplete?: (result: WriteResult) => void | Promise<void>;
 };
@@ -127,7 +134,12 @@ const PRODUCT_SET_MUTATION = `
 // Product input builder — productSet format
 // ---------------------------------------------------------------------------
 
-function buildProductSetInput(product: CatalogProduct, locationId: string | null): {
+function buildProductSetInput(
+  product: CatalogProduct,
+  locationId: string | null,
+  vendorProfileId?: string | null,
+  vendorNormalizedName?: string | null,
+): {
   productSet: Record<string, unknown>;
 } {
   // First, determine product options from ALL variant data
@@ -208,6 +220,29 @@ function buildProductSetInput(product: CatalogProduct, locationId: string | null
     productSet.files = files;
   }
 
+  // Vendor metafield — app-owned, authoritative scope signal for this vendor
+  if (vendorProfileId) {
+    productSet.metafields = [
+      {
+        namespace: "$app:store_delivery",
+        key: "vendor_id",
+        value: vendorProfileId,
+        type: "single_line_text_field",
+      },
+    ];
+  }
+
+  // Vendor tag — human-readable visibility in Shopify Admin (advisory only)
+  if (vendorNormalizedName) {
+    const vendorTag = `storedelivery:vendor:${vendorNormalizedName}`;
+    const existingTags: string[] = Array.isArray(productSet.tags)
+      ? (productSet.tags as string[])
+      : [];
+    if (!existingTags.includes(vendorTag)) {
+      productSet.tags = [...existingTags, vendorTag];
+    }
+  }
+
   return { productSet };
 }
 
@@ -272,7 +307,14 @@ export async function writeProducts(
   const active: Promise<void>[] = [];
 
   async function processOne(product: CatalogProduct): Promise<void> {
-    const result = await writeOneProduct(client, product, options.locationId ?? null, logger);
+    const result = await writeOneProduct(
+      client,
+      product,
+      options.locationId ?? null,
+      logger,
+      options.vendorProfileId ?? null,
+      options.vendorNormalizedName ?? null,
+    );
     results.push(result);
     if (options?.onItemComplete) {
       await options.onItemComplete(result);
@@ -303,9 +345,11 @@ async function writeOneProduct(
   product: CatalogProduct,
   locationId: string | null,
   logger: ReturnType<typeof getLogger>,
+  vendorProfileId: string | null = null,
+  vendorNormalizedName: string | null = null,
 ): Promise<WriteResult> {
   try {
-    const { productSet } = buildProductSetInput(product, locationId);
+    const { productSet } = buildProductSetInput(product, locationId, vendorProfileId, vendorNormalizedName);
     const imageCount = product.images.filter((img) => img.sourceUrl.startsWith("http")).length;
 
     const res = await client.query<{

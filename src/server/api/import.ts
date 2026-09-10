@@ -19,7 +19,7 @@ export const CLASSIFICATION_LABELS: Record<string, string> = {
   LIKELY_EXISTING: "Matched to existing Shopify product",
   NO_CHANGE: "Matched — no changes detected",
   NEEDS_REVIEW: "Ambiguous match — needs review",
-  UPDATE_REVIEW: "Updates pending merchant review",
+  UPDATE_REVIEW: "Already in Shopify — review updates on the Edit page",
 };
 
 export function getSkipReason(classification: string | undefined): string {

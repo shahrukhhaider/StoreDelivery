@@ -43,14 +43,22 @@ enum UploadStatus {
   failed
 }
 
+enum UploadModeEnum {
+  CATALOG_UPDATE
+  INVENTORY_UPDATE
+}
+
 model CatalogUpload {
-  id         String       @id @default(cuid())
-  shopId     String       @map("shop_id")
-  fileName   String       @map("file_name")
-  storageKey String       @map("storage_key")
-  format     String       // "csv" | "xlsx"
-  status     UploadStatus @default(pending)
-  createdAt  DateTime     @default(now()) @map("created_at")
+  id         String          @id @default(cuid())
+  shopId     String          @map("shop_id")
+  fileName   String          @map("file_name")
+  storageKey String          @map("storage_key")
+  format     String          // "csv" | "xlsx"
+  status     UploadStatus    @default(pending)
+  /// Catalog Update = full-snapshot semantics (create/update/detect-missing).
+  /// Inventory Update = partial semantics (update supplied fields only, never create).
+  uploadMode UploadModeEnum  @default(CATALOG_UPDATE) @map("upload_mode")
+  createdAt  DateTime        @default(now()) @map("created_at")
 
   shop     Shop      @relation(fields: [shopId], references: [id])
   catalogs Catalog[]
@@ -69,10 +77,13 @@ model Catalog {
   uploadId          String   @map("upload_id")
   schemaFingerprint String   @map("schema_fingerprint")
   parseVersion      String   @default("1") @map("parse_version")
+  /// Resolved vendor — set during vendor-confirm step, null if skipped.
+  vendorId          String?  @map("vendor_id")
   createdAt         DateTime @default(now()) @map("created_at")
 
   shop            Shop             @relation(fields: [shopId], references: [id])
   upload          CatalogUpload    @relation(fields: [uploadId], references: [id])
+  vendor          SupplierProfile? @relation(fields: [vendorId], references: [id])
   fieldMappings   FieldMapping[]
   catalogProducts CatalogProduct[]
   importOperations ImportOperation[]
@@ -80,6 +91,7 @@ model Catalog {
   snapshots       ImportSnapshot[]
 
   @@index([shopId])
+  @@index([vendorId])
   @@map("catalogs")
 }
 
@@ -302,17 +314,46 @@ model SupplierProfile {
   id                String   @id @default(cuid())
   shopId            String   @map("shop_id")
   name              String
-  schemaFingerprint String   @map("schema_fingerprint")
+  /// URL-safe slug, e.g. "acme-distribution". Unique per shop.
+  normalizedName    String   @map("normalized_name")
+  schemaFingerprint String?  @map("schema_fingerprint")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  shop            Shop             @relation(fields: [shopId], references: [id])
-  productMappings ProductMapping[]
-  catalogRuns     CatalogRun[]
+  shop               Shop                 @relation(fields: [shopId], references: [id])
+  productMappings    ProductMapping[]
+  catalogRuns        CatalogRun[]
+  vendorColumnMappings VendorColumnMapping[]
+  catalogs           Catalog[]
 
-  @@unique([shopId, schemaFingerprint])
+  @@unique([shopId, normalizedName])
   @@index([shopId])
+  @@index([shopId, schemaFingerprint])
   @@map("supplier_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Vendor Column Mappings — per-vendor saved column schema
+// Saved only after a successful Catalog Update.
+// Reloaded as suggestions for subsequent uploads from the same vendor.
+// ---------------------------------------------------------------------------
+
+model VendorColumnMapping {
+  id              String   @id @default(cuid())
+  vendorId        String   @map("vendor_id")
+  sourceColumn    String   @map("source_column")
+  canonicalField  String?  @map("canonical_field")
+  ignored         Boolean  @default(false)
+  /// Reserved for future value transforms (prefix strip, multiplier, etc.)
+  transformConfig Json?    @map("transform_config")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  vendor SupplierProfile @relation(fields: [vendorId], references: [id])
+
+  @@unique([vendorId, sourceColumn])
+  @@index([vendorId])
+  @@map("vendor_column_mappings")
 }
 
 // ---------------------------------------------------------------------------
@@ -447,6 +488,7 @@ enum ReconciliationClassification {
   NEEDS_REVIEW
   UPDATE_REVIEW
   NO_CHANGE
+  MISSING
 }
 
 enum ProposedActionEnum {

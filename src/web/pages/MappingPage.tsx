@@ -20,6 +20,7 @@ import {
 import {
   getMappings,
   updateMappings,
+  getCatalogVendor,
   type MappingItem,
   type MappingUpdate,
 } from "../api-client.js";
@@ -70,15 +71,22 @@ function confidenceBadge(confidence: string) {
 
 export function MappingPage({ catalogId, onComplete, onBack }: Props) {
   const [mappings, setMappings] = useState<MappingItem[]>([]);
+  const [vendorId, setVendorId] = useState<string | null>(null);
+  const [vendorName, setVendorName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [edited, setEdited] = useState<Map<string, MappingUpdate>>(new Map());
 
   useEffect(() => {
-    getMappings(catalogId)
-      .then((res) => {
-        setMappings(res.mappings);
+    Promise.all([
+      getMappings(catalogId),
+      getCatalogVendor(catalogId),
+    ])
+      .then(([mappingsRes, vendorRes]) => {
+        setMappings(mappingsRes.mappings);
+        setVendorId(mappingsRes.vendorId ?? null);
+        setVendorName(vendorRes.vendor?.name ?? null);
         setLoading(false);
       })
       .catch((err) => {
@@ -216,6 +224,19 @@ export function MappingPage({ catalogId, onComplete, onBack }: Props) {
       }}
     >
       <BlockStack gap="400">
+        {/* Vendor pill — shows which supplier this catalog belongs to */}
+        {vendorName && (
+          <InlineStack gap="200" blockAlign="center">
+            <Text as="span" variant="bodySm" tone="subdued">Supplier:</Text>
+            <Badge tone="info">{vendorName}</Badge>
+            {mappings.some((m) => m.fromVendor) && (
+              <Text as="span" variant="bodySm" tone="subdued">
+                · Column mapping loaded from vendor history
+              </Text>
+            )}
+          </InlineStack>
+        )}
+
         {error && (
           <Banner title="Error" tone="critical" onDismiss={() => setError(null)}>
             <p>{error}</p>

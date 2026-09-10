@@ -13,6 +13,7 @@
  */
 
 import type { CatalogProduct, CatalogVariant } from "@shared/types/catalog.js";
+import { computeVariantFingerprint } from "../sku/variant-fingerprint.js";
 import type {
   FieldChange,
   VariantDiff,
@@ -48,7 +49,7 @@ export function computeProductDiff(
 
   const hasChanges =
     productChanges.length > 0 ||
-    variantChanges.some((v) => v.changes.length > 0);
+    variantChanges.some((v) => v.changes.length > 0 || v.status === "added" || v.status === "discontinued");
 
   return {
     sourceProductKey: supplier.sourceKey,
@@ -107,21 +108,13 @@ function diffVariants(
 ): VariantDiff[] {
   const diffs: VariantDiff[] = [];
 
-  // Build lookup: sourceVariantFingerprint → shopifyVariantId
-  const fingerprintToShopifyId = new Map<string, string>();
-  for (const m of variantMappings) {
-    if (m.shopifyVariantId) {
-      fingerprintToShopifyId.set(m.sourceVariantFingerprint, m.shopifyVariantId);
-    }
-  }
-
   // Build lookup: shopifyVariantId → snapshot variant
   const shopifyById = new Map<string, SnapshotVariant>();
   for (const v of shopifyVariants) {
     shopifyById.set(v.shopifyVariantId, v);
   }
 
-  // Also build a fallback lookup by sourceVariantKey from mappings
+  // Build lookup: sourceVariantKey → shopifyVariantId (from persisted mappings)
   const sourceKeyToShopifyId = new Map<string, string>();
   for (const m of variantMappings) {
     if (m.shopifyVariantId) {
@@ -129,29 +122,81 @@ function diffVariants(
     }
   }
 
-  for (const supplierVariant of supplier.variants) {
-    // Try to find the corresponding Shopify variant
-    const shopifyVariantId =
-      sourceKeyToShopifyId.get(supplierVariant.sourceKey) ?? null;
+  // Build a set of sourceVariantKeys present in the supplier file (for discontinued detection)
+  const supplierVariantKeys = new Set(supplier.variants.map((v) => v.sourceKey));
+
+  // -------------------------------------------------------------------------
+  // Pass 1: iterate supplier variants
+  //   - matched mapping   → diff fields → "changed" if any differ
+  //   - no mapping        → compute fingerprint, check again → "added" if no match
+  // -------------------------------------------------------------------------
+  for (let vi = 0; vi < supplier.variants.length; vi++) {
+    const supplierVariant = supplier.variants[vi];
+
+    // Try direct sourceKey lookup first (fast path — most common after first import)
+    let shopifyVariantId = sourceKeyToShopifyId.get(supplierVariant.sourceKey) ?? null;
+
+    // Fallback: try fingerprint-based lookup (handles row reordering)
+    if (!shopifyVariantId) {
+      const fingerprint = computeVariantFingerprint(supplier.sourceKey, supplierVariant, vi);
+      for (const m of variantMappings) {
+        if (m.sourceVariantFingerprint === fingerprint && m.shopifyVariantId) {
+          shopifyVariantId = m.shopifyVariantId;
+          break;
+        }
+      }
+    }
 
     if (!shopifyVariantId) {
-      // No mapping for this variant — could be a new variant, skip diff
+      // No mapping found — this is a new variant not previously imported
+      diffs.push({
+        sourceVariantKey: supplierVariant.sourceKey,
+        shopifyVariantId: null,
+        changes: [],
+        status: "added",
+      });
       continue;
     }
 
     const shopifyVariant = shopifyById.get(shopifyVariantId);
     if (!shopifyVariant) {
-      // Mapped but not in snapshot — skip
+      // Mapped but Shopify variant no longer found (deleted externally) — treat as new
+      diffs.push({
+        sourceVariantKey: supplierVariant.sourceKey,
+        shopifyVariantId: null,
+        changes: [],
+        status: "added",
+      });
       continue;
     }
 
+    // Existing variant — diff fields
     const changes = diffVariantFields(supplierVariant, shopifyVariant);
-
     if (changes.length > 0) {
       diffs.push({
         sourceVariantKey: supplierVariant.sourceKey,
         shopifyVariantId,
         changes,
+        status: "changed",
+      });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Pass 2: find discontinued variants
+  //   Mappings that point to a Shopify variant but have no corresponding
+  //   supplier variant in the current upload.
+  // -------------------------------------------------------------------------
+  for (const m of variantMappings) {
+    if (!m.shopifyVariantId) continue;
+    // Only show as discontinued if the variant still exists in Shopify.
+    // If it's already been deleted externally, no action is needed.
+    if (!supplierVariantKeys.has(m.sourceVariantKey) && shopifyById.has(m.shopifyVariantId)) {
+      diffs.push({
+        sourceVariantKey: m.sourceVariantKey,
+        shopifyVariantId: m.shopifyVariantId,
+        changes: [],
+        status: "discontinued",
       });
     }
   }
@@ -174,10 +219,12 @@ function diffVariantFields(
     compareField(changes, "cost", shopify.cost, supplier.cost);
   }
 
-  // Inventory quantity
-  const shopifyQty = shopify.inventoryQuantity != null ? String(shopify.inventoryQuantity) : null;
-  const supplierQty = supplier.inventoryQuantity != null ? String(supplier.inventoryQuantity) : null;
-  compareField(changes, "inventoryQuantity", shopifyQty, supplierQty);
+  // Inventory quantity — only diff if supplier explicitly provides a value
+  if (supplier.inventoryQuantity != null) {
+    const shopifyQty = shopify.inventoryQuantity != null ? String(shopify.inventoryQuantity) : null;
+    const supplierQty = String(supplier.inventoryQuantity);
+    compareField(changes, "inventoryQuantity", shopifyQty, supplierQty);
+  }
 
   // Weight — normalise units to Shopify canonical form before comparing so that
   // "1.5 kg" and "1.5 KILOGRAMS" are not reported as a change.
