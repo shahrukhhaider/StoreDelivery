@@ -17,7 +17,7 @@
     "build:client": "vite build",
     "clean": "rm -rf dist node_modules/.cache coverage",
     "clean:all": "rm -rf dist node_modules/.cache coverage node_modules package-lock.json",
-    "postinstall": "npx prisma generate",
+    "postinstall": "./node_modules/.bin/prisma generate || node_modules/.bin/prisma generate",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -26,9 +26,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "db:generate": "npx prisma generate",
-    "db:migrate": "npx prisma migrate dev",
-    "db:push": "npx prisma db push",
+    "db:generate": "./node_modules/.bin/prisma generate",
+    "db:migrate": "./node_modules/.bin/prisma migrate dev",
+    "db:push": "./node_modules/.bin/prisma db push",
     "db:studio": "npx prisma studio"
   },
   "dependencies": {
