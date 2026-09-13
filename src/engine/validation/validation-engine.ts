@@ -44,8 +44,17 @@ const MAX_OPTION_VALUE_LENGTH = 255;
 
 /**
  * Validate a list of catalog products and return all issues.
+ *
+ * @param products - The resolved products to validate.
+ * @param uploadMode - If INVENTORY_UPDATE, skip structural blocking checks
+ *   (MISSING_TITLE, NO_VARIANTS, MISSING_OPTIONS, TOO_MANY_OPTIONS, TOO_MANY_VARIANTS)
+ *   that require a complete product definition. Inventory Update files only need
+ *   an identifier column (SKU/barcode) and the fields being updated.
  */
-export function validateCatalog(products: CatalogProduct[]): ValidationResult {
+export function validateCatalog(
+  products: CatalogProduct[],
+  uploadMode: "CATALOG_UPDATE" | "INVENTORY_UPDATE" = "CATALOG_UPDATE",
+): ValidationResult {
   const issues: CatalogIssue[] = [];
   let autoFixedCount = 0;
 
@@ -56,6 +65,10 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
     );
     return summarize(issues, autoFixedCount, emptyCoverage());
   }
+
+  // For Inventory Updates, skip structural blocking checks — the file only
+  // needs identifier columns (SKU/barcode) plus the fields being updated.
+  const skipStructuralChecks = uploadMode === "INVENTORY_UPDATE";
 
   // Track SKUs and barcodes for duplicate detection
   const seenSkus = new Map<string, string[]>(); // sku → sourceKeys
@@ -71,8 +84,8 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
   for (const product of products) {
     // --- Blocking ---
 
-    // Missing title
-    if (!product.title || product.title.trim() === "") {
+    // Missing title — skip for Inventory Update (title not required to match existing products)
+    if (!skipStructuralChecks && (!product.title || product.title.trim() === "")) {
       issues.push(
         blocking(
           "MISSING_TITLE",
@@ -83,8 +96,8 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
       );
     }
 
-    // Invalid variant structure
-    if (product.variants.length === 0) {
+    // Invalid variant structure — skip for Inventory Update
+    if (!skipStructuralChecks && product.variants.length === 0) {
       issues.push(
         blocking(
           "NO_VARIANTS",
@@ -95,10 +108,8 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
       );
     }
 
-    // Multi-variant product without options — Shopify requires unique option
-    // values to distinguish variants. Without mapped option columns, all
-    // variants are indistinguishable and creation will fail.
-    if (product.variants.length > 1) {
+    // Multi-variant product without options — skip for Inventory Update
+    if (!skipStructuralChecks && product.variants.length > 1) {
       const hasAnyOptions = product.variants.some(
         (v) => Object.values(v.options).some((val) => val && val.trim() !== ""),
       );
@@ -114,14 +125,14 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
       }
     }
 
-    // Too many options — Shopify allows max 3 option names per product
+    // Too many options — skip for Inventory Update
     const optionNames = new Set<string>();
     for (const v of product.variants) {
       for (const key of Object.keys(v.options)) {
         if (v.options[key]?.trim()) optionNames.add(key);
       }
     }
-    if (optionNames.size > MAX_OPTIONS_PER_PRODUCT) {
+    if (!skipStructuralChecks && optionNames.size > MAX_OPTIONS_PER_PRODUCT) {
       issues.push(
         blocking(
           "TOO_MANY_OPTIONS",
@@ -132,8 +143,8 @@ export function validateCatalog(products: CatalogProduct[]): ValidationResult {
       );
     }
 
-    // Too many variants — Shopify allows max 100 variants per product
-    if (product.variants.length > MAX_VARIANTS_PER_PRODUCT) {
+    // Too many variants — skip for Inventory Update
+    if (!skipStructuralChecks && product.variants.length > MAX_VARIANTS_PER_PRODUCT) {
       issues.push(
         blocking(
           "TOO_MANY_VARIANTS",

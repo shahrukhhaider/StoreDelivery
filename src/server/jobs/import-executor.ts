@@ -103,57 +103,75 @@ export async function executeImport(operationId: string): Promise<void> {
     const catalog = operation.catalog;
     const schemaFingerprint = catalog.schemaFingerprint ?? "unknown";
 
-    // Reuse recent reconciliation if available (avoids duplicate run when merchant
-    // already used the Updates tab which ran reconciliation within the last 15 minutes)
+    // Use the most recent completed CatalogRun for this catalog.
+    // The merchant already reviewed reconciliation results on the edit page —
+    // there is no need to re-run it at import time. Running it again can
+    // produce different results (e.g. Shopify state changed) that the merchant
+    // never reviewed, leading to unexpected creates/skips.
+    //
+    // Only fall back to a fresh reconciliation if no prior run exists
+    // (e.g. merchant skipped the edit page and went straight to import).
     const recentRun = await prisma.catalogRun.findFirst({
       where: {
         catalogId: operation.catalogId,
         shopId: operation.shopId,
         status: "COMPLETED",
-        completedAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
       },
       orderBy: { completedAt: "desc" },
-      include: {
+      select: {
+        id: true,
+        supplierProfileId: true,
         items: {
           select: { sourceProductKey: true, classification: true, proposedAction: true },
         },
       },
     });
 
-    logger.info(
-      recentRun ? "Reusing recent reconciliation run" : "Running fresh reconciliation",
-      { productCount: catalogProducts.length, recentRunId: recentRun?.id },
-    );
+    // Build classifications from the existing run, or run fresh if none exists
+    let classifications: Array<{ sourceProductKey: string; classification: string }>;
+    let supplierProfileId: string | null = recentRun?.supplierProfileId ?? null;
 
-    const reconciliation = await runReconciliation(
-      operation.shopId,
-      operation.catalogId,
-      schemaFingerprint,
-      catalogProducts,
-      client,
-      operation.catalog.upload?.uploadMode ?? "CATALOG_UPDATE",
-      operation.catalog.vendor?.id ?? null,
-    );
-
-    logger.info("Reconciliation complete", {
-      summary: reconciliation.summary,
-      catalogRunId: reconciliation.catalogRunId,
-    });
+    if (recentRun) {
+      logger.info("Using existing reconciliation run — skipping fresh reconciliation", {
+        catalogRunId: recentRun.id,
+        itemCount: recentRun.items.length,
+      });
+      classifications = recentRun.items;
+    } else {
+      logger.info("No prior reconciliation run found — running fresh reconciliation", {
+        productCount: catalogProducts.length,
+      });
+      const reconciliation = await runReconciliation(
+        operation.shopId,
+        operation.catalogId,
+        schemaFingerprint,
+        catalogProducts,
+        client,
+        operation.catalog.upload?.uploadMode ?? "CATALOG_UPDATE",
+        operation.catalog.vendor?.id ?? null,
+      );
+      logger.info("Reconciliation complete", {
+        summary: reconciliation.summary,
+        catalogRunId: reconciliation.catalogRunId,
+      });
+      classifications = reconciliation.classifications.map((c) => ({
+        sourceProductKey: c.sourceProductKey,
+        classification: c.classification,
+      }));
+      supplierProfileId = reconciliation.supplierProfileId;
+    }
 
     // Determine which products to import vs skip vs update based on classification
-    // NEW_PRODUCT → create, UPDATE_REVIEW → update (deferred to merchant review),
+    // NEW_PRODUCT → create, UPDATE_REVIEW → skip (handled via update review API),
     // EXISTING_MAPPED/NO_CHANGE → skip, LIKELY_EXISTING → skip,
     // NEEDS_REVIEW → skip (hold for merchant)
     const toCreateKeys = new Set<string>();
     const toSkipKeys = new Set<string>();
 
-    for (const c of reconciliation.classifications) {
+    for (const c of classifications) {
       if (c.classification === "NEW_PRODUCT") {
         toCreateKeys.add(c.sourceProductKey);
       } else {
-        // EXISTING_MAPPED, LIKELY_EXISTING, NEEDS_REVIEW, NO_CHANGE, UPDATE_REVIEW → skip
-        // UPDATE_REVIEW products are handled via the separate update review API,
-        // not during the initial import execution.
         toSkipKeys.add(c.sourceProductKey);
       }
     }
@@ -254,12 +272,14 @@ export async function executeImport(operationId: string): Promise<void> {
           if (product) {
             await persistVariantMappings(operation.shopId, product, result);
             // Also persist reconciliation-level product + variant mappings
-            await persistReconciliationMappings(
-              operation.shopId,
-              reconciliation.supplierProfileId,
-              product,
-              result,
-            );
+            if (supplierProfileId) {
+              await persistReconciliationMappings(
+                operation.shopId,
+                supplierProfileId,
+                product,
+                result,
+              );
+            }
           }
         } else {
           failedCount++;

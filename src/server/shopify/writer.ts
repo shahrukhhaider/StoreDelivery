@@ -173,16 +173,44 @@ function buildProductSetInput(
     }
     if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
 
-    // Weight — write at create time so re-uploads don't show false-positive diffs
+    // inventoryItem — collects weight measurement and/or cost
+    // Build once so weight + cost can both be included without overwriting each other
+    const invItemInput: Record<string, unknown> = {};
+
     if (v.weight != null && v.weightUnit) {
-      variant.inventoryItem = {
-        measurement: {
-          weight: {
-            value: v.weight,
-            unit: normalizeWeightUnitForShopify(v.weightUnit),
-          },
+      invItemInput.measurement = {
+        weight: {
+          value: v.weight,
+          unit: normalizeWeightUnitForShopify(v.weightUnit),
         },
       };
+    }
+
+    if (v.cost != null) {
+      invItemInput.cost = v.cost;
+    }
+
+    if (Object.keys(invItemInput).length > 0) {
+      variant.inventoryItem = invItemInput;
+    }
+
+    // Taxable — write at create time so re-uploads don't show false-positive diffs
+    if (v.taxable != null) {
+      variant.taxable = v.taxable;
+    }
+
+    // Inventory policy — write at create time
+    if (v.inventoryPolicy != null) {
+      variant.inventoryPolicy = v.inventoryPolicy.toUpperCase();
+    }
+
+    // Inventory quantity — set at create time so re-uploads don't show false diffs.
+    // Only written when locationId is available and inventoryQuantity is explicitly set.
+    if (locationId && v.inventoryQuantity != null) {
+      variant.inventoryQuantities = [{
+        availableQuantity: v.inventoryQuantity,
+        locationId,
+      }];
     }
 
     // Build optionValues aligned with product's declared options

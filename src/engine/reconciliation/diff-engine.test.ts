@@ -254,7 +254,9 @@ describe("diff — images", () => {
     expect(diff.productChanges.find((c) => c.field === "images")).toBeUndefined();
   });
 
-  it("detects images removed (Shopify has, supplier doesn't)", () => {
+  it("no change when supplier has no images (treated as 'no opinion', not 'remove')", () => {
+    // When supplier file has no Images column, images=[] means the column wasn't mapped.
+    // This should NOT be treated as "remove all images" — that would be destructive.
     const diff = computeProductDiff(
       supplier({ title: "T", vendor: "V", images: [] }),
       shopifyProduct({
@@ -263,10 +265,8 @@ describe("diff — images", () => {
       }),
       [], [],
     );
-    const c = diff.productChanges.find((c) => c.field === "images")!;
-    expect(c).toBeDefined();
-    expect(c.shopifyValue).toBe("1 image");
-    expect(c.supplierValue).toBeNull();
+    // No change — supplier absence of images ≠ intent to clear them
+    expect(diff.productChanges.find((c) => c.field === "images")).toBeUndefined();
   });
 });
 
@@ -942,5 +942,134 @@ describe("diff — images CDN URL tolerance", () => {
     expect(c).toBeDefined();
     expect(c!.shopifyValue).toBe("1 image");
     expect(c!.supplierValue).toBe("2 images");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tags — StoreDelivery-managed tags excluded from diff
+// ---------------------------------------------------------------------------
+
+describe("diff — tags with storedelivery: prefix", () => {
+  it("no change when Shopify has vendor tag but supplier file does not", () => {
+    // The storedelivery:vendor: tag is written by the app, not the supplier
+    const diff = computeProductDiff(
+      supplier({ title: "T", vendor: "V", tags: ["Accessories"] }),
+      shopifyProduct({
+        title: "T", vendor: "V",
+        tags: ["Accessories", "storedelivery:vendor:united-by-blue"],
+      }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "tags")).toBeUndefined();
+  });
+
+  it("detects real tag change (not the storedelivery tag)", () => {
+    const diff = computeProductDiff(
+      supplier({ title: "T", vendor: "V", tags: ["Sale"] }),
+      shopifyProduct({
+        title: "T", vendor: "V",
+        tags: ["Accessories", "storedelivery:vendor:united-by-blue"],
+      }),
+      [], [],
+    );
+    const c = diff.productChanges.find((ci) => ci.field === "tags");
+    expect(c).toBeDefined();
+    // Shopify value excludes the app tag, supplier value is just "Sale"
+    expect(c!.shopifyValue).toBe("Accessories");
+    expect(c!.supplierValue).toBe("Sale");
+  });
+
+  it("no change when both have no tags and Shopify has only storedelivery tag", () => {
+    const diff = computeProductDiff(
+      supplier({ title: "T", vendor: "V", tags: [] }),
+      shopifyProduct({
+        title: "T", vendor: "V",
+        tags: ["storedelivery:vendor:acme"],
+      }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "tags")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Inventory Update false-positive prevention
+// — product-level fields skipped when supplier omits them
+// ---------------------------------------------------------------------------
+
+describe("diff — product fields skipped when supplier omits", () => {
+  it("no title diff when supplier has no title (empty string)", () => {
+    // Inventory Update files don't have a Title column
+    const diff = computeProductDiff(
+      supplier({ title: "", vendor: "V" }),
+      shopifyProduct({ title: "Ayres Chambray", vendor: "V" }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "title")).toBeUndefined();
+  });
+
+  it("detects title change when supplier explicitly provides a different title", () => {
+    const diff = computeProductDiff(
+      supplier({ title: "New Title", vendor: "V" }),
+      shopifyProduct({ title: "Old Title", vendor: "V" }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "title")).toBeDefined();
+  });
+
+  it("no vendor diff when supplier has no vendor column (empty/null)", () => {
+    const diff = computeProductDiff(
+      supplier({ title: "T", vendor: "" }),
+      shopifyProduct({ title: "T", vendor: "United By Blue" }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "vendor")).toBeUndefined();
+  });
+
+  it("no tags diff when supplier has no tags column (empty array)", () => {
+    const diff = computeProductDiff(
+      supplier({ title: "T", vendor: "V", tags: [] }),
+      shopifyProduct({ title: "T", vendor: "V", tags: ["Shirts", "Sale"] }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "tags")).toBeUndefined();
+  });
+
+  it("full Inventory Update scenario — qty-only file shows only qty changes", () => {
+    // Simulate qty-update CSV: no title, no vendor, no tags, no images, only qty
+    const diff = computeProductDiff(
+      supplier({
+        title: "",          // no Title column
+        vendor: "",         // no Vendor column
+        tags: [],           // no Tags column
+        images: [],         // no Images column
+        variants: [{
+          sourceKey: "V1",
+          sku: "SKU-001",
+          options: {},
+          price: undefined,            // no Price column
+          inventoryQuantity: 50,       // ← the only change
+          sourceData: {},
+        }],
+      }),
+      shopifyProduct({ title: "Classic Tee", vendor: "Acme", tags: ["Shirts"] }),
+      [shopifyVariant({ price: "24.99", inventoryQuantity: 10 })],
+      [variantMapping()],
+    );
+
+    // Only inventoryQuantity should show as a change
+    const productChanges = diff.productChanges;
+    const variantChanges = diff.variantChanges.flatMap((v) => v.changes);
+
+    expect(productChanges.find((c) => c.field === "title")).toBeUndefined();
+    expect(productChanges.find((c) => c.field === "vendor")).toBeUndefined();
+    expect(productChanges.find((c) => c.field === "tags")).toBeUndefined();
+    expect(productChanges.find((c) => c.field === "images")).toBeUndefined();
+    expect(variantChanges.find((c) => c.field === "price")).toBeUndefined();
+
+    const qtyChange = variantChanges.find((c) => c.field === "inventoryQuantity");
+    expect(qtyChange).toBeDefined();
+    expect(qtyChange!.shopifyValue).toBe("10");
+    expect(qtyChange!.supplierValue).toBe("50");
   });
 });

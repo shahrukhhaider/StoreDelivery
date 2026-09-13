@@ -70,19 +70,34 @@ function diffProductFields(
 ): FieldChange[] {
   const changes: FieldChange[] = [];
 
-  compareField(changes, "title", shopify.title, supplier.title);
-  compareField(changes, "description", shopify.description ?? null, supplier.description ?? null);
-  compareField(changes, "vendor", shopify.vendor ?? null, supplier.vendor ?? null);
-  compareField(changes, "productType", shopify.productType ?? null, supplier.productType ?? null);
+  // Only diff product fields when the supplier actually provides them.
+  // If the supplier file has no Title/Description/Vendor column, the value
+  // normalizes to empty — treat as "no opinion" and skip, same as cost/taxable.
+  if (supplier.title && supplier.title.trim()) {
+    compareField(changes, "title", shopify.title, supplier.title);
+  }
+  if (supplier.description != null && supplier.description.trim() !== "") {
+    compareField(changes, "description", shopify.description ?? null, supplier.description);
+  }
+  if (supplier.vendor != null && supplier.vendor.trim() !== "") {
+    compareField(changes, "vendor", shopify.vendor ?? null, supplier.vendor);
+  }
+  if (supplier.productType != null && supplier.productType.trim() !== "") {
+    compareField(changes, "productType", shopify.productType ?? null, supplier.productType);
+  }
 
-  // Tags: compare as sorted strings
-  const shopifyTags = (shopify.tags ?? []).slice().sort().join(", ");
-  const supplierTags = (supplier.tags ?? []).slice().sort().join(", ");
-  compareField(changes, "tags", shopifyTags || null, supplierTags || null);
+  // Tags — only diff when supplier explicitly provides them
+  if ((supplier.tags ?? []).length > 0) {
+    const isAppTag = (t: string) => t.startsWith("storedelivery:");
+    const shopifyTags = (shopify.tags ?? []).filter((t) => !isAppTag(t)).slice().sort().join(", ");
+    const supplierTags = supplier.tags.slice().sort().join(", ");
+    compareField(changes, "tags", shopifyTags || null, supplierTags || null);
+  }
 
-  // Images: compare by filename set (order-independent, ignores CDN domain/version params)
+  // Images: compare by filename set (order-independent, ignores CDN domain/version params).
   // Shopify transforms source URLs to CDN URLs after import, so full URL comparison
   // produces false positives on re-upload of the same file.
+  // If the count is the same, we compare filenames. If counts differ, always flag it.
   const extractImageFilename = (url: string): string => {
     try {
       const path = new URL(url).pathname;
@@ -92,17 +107,33 @@ function diffProductFields(
     }
   };
 
-  const shopifyImageFiles = (shopify.images ?? []).map((i) => extractImageFilename(i.url)).sort().join("|");
-  const supplierImageFiles = (supplier.images ?? []).map((i) => extractImageFilename(i.sourceUrl)).sort().join("|");
-  if (shopifyImageFiles !== supplierImageFiles && (shopifyImageFiles || supplierImageFiles)) {
-    const shopifyCount = (shopify.images ?? []).length;
-    const supplierCount = (supplier.images ?? []).length;
-    changes.push({
-      field: "images",
-      shopifyValue: shopifyCount > 0 ? `${shopifyCount} image${shopifyCount !== 1 ? "s" : ""}` : null,
-      supplierValue: supplierCount > 0 ? `${supplierCount} image${supplierCount !== 1 ? "s" : ""}` : null,
-      selected: true,
-    });
+  const shopifyImages = shopify.images ?? [];
+  const supplierImages = supplier.images ?? [];
+
+  // Images — only diff when supplier explicitly provides image URLs.
+  // If no Images column is mapped, skip entirely to avoid false positives.
+  if (supplierImages.length > 0) {
+    if (shopifyImages.length !== supplierImages.length) {
+      // Count mismatch — definite change
+      changes.push({
+        field: "images",
+        shopifyValue: shopifyImages.length > 0 ? `${shopifyImages.length} image${shopifyImages.length !== 1 ? "s" : ""}` : null,
+        supplierValue: `${supplierImages.length} image${supplierImages.length !== 1 ? "s" : ""}`,
+        selected: true,
+      });
+    } else {
+      // Same count — compare by filename to catch actual replacements
+      const shopifyFilenames = shopifyImages.map((i) => extractImageFilename(i.url)).sort().join("|");
+      const supplierFilenames = supplierImages.map((i) => extractImageFilename(i.sourceUrl)).sort().join("|");
+      if (shopifyFilenames !== supplierFilenames) {
+        changes.push({
+          field: "images",
+          shopifyValue: `${shopifyImages.length} image${shopifyImages.length !== 1 ? "s" : ""}`,
+          supplierValue: `${supplierImages.length} image${supplierImages.length !== 1 ? "s" : ""}`,
+          selected: true,
+        });
+      }
+    }
   }
 
   return changes;
@@ -221,9 +252,16 @@ function diffVariantFields(
 ): FieldChange[] {
   const changes: FieldChange[] = [];
 
-  compareField(changes, "price", shopify.price, supplier.price ?? null);
-  compareField(changes, "compareAtPrice", shopify.compareAtPrice, supplier.compareAtPrice ?? null);
-  compareField(changes, "barcode", shopify.barcode, supplier.barcode ?? null);
+  // Only diff variant fields when supplier explicitly provides them
+  if (supplier.price != null) {
+    compareField(changes, "price", shopify.price, supplier.price);
+  }
+  if (supplier.compareAtPrice != null) {
+    compareField(changes, "compareAtPrice", shopify.compareAtPrice, supplier.compareAtPrice);
+  }
+  if (supplier.barcode != null) {
+    compareField(changes, "barcode", shopify.barcode, supplier.barcode);
+  }
 
   // Cost — only diff if supplier explicitly provides a value (avoid clearing merchant-set costs)
   if (supplier.cost != null) {

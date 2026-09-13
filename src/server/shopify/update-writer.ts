@@ -233,6 +233,19 @@ export async function applyProductUpdate(
         productSetInput.tags =
           change.supplierValue?.split(",").map((t) => t.trim()).filter(Boolean) ?? [];
         break;
+      case "images":
+        // Images are re-sent as files — use the supplier product's image list
+        // (the supplierProduct field carries the full CatalogProduct)
+        if (request.supplierProduct.images.length > 0) {
+          productSetInput.files = request.supplierProduct.images
+            .filter((img) => img.sourceUrl.startsWith("http"))
+            .map((img) => ({
+              originalSource: img.sourceUrl,
+              alt: img.altText ?? "",
+              contentType: "IMAGE",
+            }));
+        }
+        break;
     }
   }
 

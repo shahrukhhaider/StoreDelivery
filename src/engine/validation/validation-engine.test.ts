@@ -624,3 +624,51 @@ describe("NEGATIVE_PRICE", () => {
     expect(result.issues.find((i) => i.code === "NEGATIVE_PRICE")).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Inventory Update mode — structural blocking checks skipped
+// ---------------------------------------------------------------------------
+
+describe("validateCatalog — INVENTORY_UPDATE mode", () => {
+  it("does not block on MISSING_TITLE in Inventory Update mode", () => {
+    const result = validateCatalog([product({ title: "" })], "INVENTORY_UPDATE");
+    expect(result.issues.find((i) => i.code === "MISSING_TITLE")).toBeUndefined();
+    expect(result.blockingCount).toBe(0);
+  });
+
+  it("does not block on NO_VARIANTS in Inventory Update mode", () => {
+    const result = validateCatalog([product({ variants: [] })], "INVENTORY_UPDATE");
+    expect(result.issues.find((i) => i.code === "NO_VARIANTS")).toBeUndefined();
+    expect(result.blockingCount).toBe(0);
+  });
+
+  it("does not block on MISSING_OPTIONS in Inventory Update mode", () => {
+    const p = product({
+      variants: [
+        { sourceKey: "V1", sku: "A", options: {}, price: "10", sourceData: {} },
+        { sourceKey: "V2", sku: "B", options: {}, price: "20", sourceData: {} },
+      ],
+    });
+    const result = validateCatalog([p], "INVENTORY_UPDATE");
+    expect(result.issues.find((i) => i.code === "MISSING_OPTIONS")).toBeUndefined();
+    expect(result.blockingCount).toBe(0);
+  });
+
+  it("still blocks on MISSING_TITLE in Catalog Update mode (default)", () => {
+    const result = validateCatalog([product({ title: "" })]);
+    expect(result.issues.find((i) => i.code === "MISSING_TITLE")).toBeTruthy();
+    expect(result.blockingCount).toBe(1);
+  });
+
+  it("still runs non-structural checks in Inventory Update mode (e.g. NEGATIVE_PRICE)", () => {
+    const p = product({
+      title: "",  // would block in catalog mode, should be ignored
+      variants: [{ sourceKey: "V1", sku: "A", options: {}, price: "-5.00", sourceData: {} }],
+    });
+    const result = validateCatalog([p], "INVENTORY_UPDATE");
+    // No MISSING_TITLE block
+    expect(result.issues.find((i) => i.code === "MISSING_TITLE")).toBeUndefined();
+    // But NEGATIVE_PRICE should still fire
+    expect(result.issues.find((i) => i.code === "NEGATIVE_PRICE")).toBeTruthy();
+  });
+});

@@ -27,6 +27,7 @@ async function loadCatalog(catalogId: string, shopId: string) {
   const prisma = getPrisma();
   return prisma.catalog.findFirst({
     where: { id: catalogId, shopId },
+    include: { upload: { select: { uploadMode: true } } },
   });
 }
 
@@ -79,7 +80,7 @@ router.get("/:id/edit/issues", async (req, res, next) => {
     });
 
     // Run validation on resolved products
-    const validationResult = validateCatalog(resolvedProducts);
+    const validationResult = validateCatalog(resolvedProducts, catalog.upload?.uploadMode ?? "CATALOG_UPDATE");
 
     // Parse filters
     const typeFilter = req.query.type as string | undefined;
@@ -234,7 +235,7 @@ router.patch("/:id/edit/products/:productId", async (req, res, next) => {
     const resolved = applyOverrides(source, overrideList);
 
     // Re-validate
-    const validation = validateCatalog([resolved]);
+    const validation = validateCatalog([resolved], catalog.upload?.uploadMode ?? "CATALOG_UPDATE");
 
     res.json({
       productId: product.id,
@@ -375,7 +376,7 @@ router.post("/:id/edit/bulk", async (req, res, next) => {
         source: "bulk_rule" as const,
       }));
       const resolved = applyOverrides(source, testOverrides);
-      const validation = validateCatalog([resolved]);
+      const validation = validateCatalog([resolved], catalog.upload?.uploadMode ?? "CATALOG_UPDATE");
 
       if (validation.blockingCount > 0) {
         invalidCount++;
@@ -559,7 +560,7 @@ router.get("/:id/edit/preview", async (req, res, next) => {
 
     // Validate resolved products to get per-product issues
     const allResolved = resolvedProducts.map((p) => p.resolved);
-    const validation = validateCatalog(allResolved);
+    const validation = validateCatalog(allResolved, catalog.upload?.uploadMode ?? "CATALOG_UPDATE");
 
     // If filtering by issue severity or type, only return matching products
     let filtered = resolvedProducts;
@@ -774,7 +775,7 @@ router.post("/:id/edit/similar", async (req, res, next) => {
 
     // Re-validate to find which products have this issue
     const allResolved = resolvedProducts.map((p) => p.resolved);
-    const validation = validateCatalog(allResolved);
+    const validation = validateCatalog(allResolved, catalog.upload?.uploadMode ?? "CATALOG_UPDATE");
 
     // Filter issues matching the code (and optionally field)
     const matchingIssues = validation.issues.filter((i) => {
