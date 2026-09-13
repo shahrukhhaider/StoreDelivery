@@ -1030,21 +1030,57 @@ router.get("/:id/reconciliation/updates", async (req, res, next) => {
       return;
     }
 
-    // Load diffs by re-computing from snapshots and supplier data
+    // Load diffs using live Shopify data so mutable fields (price, cost, etc.) are accurate.
+    // The local snapshot only stores identity fields (SKU/barcode/options) —
+    // fetching live ensures price changes are detected correctly.
     const { computeProductDiff } = await import("../../engine/reconciliation/diff-engine.js");
+    const { computeVariantFingerprint } = await import("../../engine/sku/variant-fingerprint.js");
+    const { fetchProductDetails } = await import("../shopify/product-detail-fetcher.js");
+    const { getAccessToken } = await import("../shopify/auth.js");
+    const { ShopifyGraphQLClient } = await import("../shopify/graphql-client.js");
+
+    const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+    if (!shop) {
+      res.status(404).json({ error: "SHOP_NOT_FOUND" });
+      return;
+    }
+    const accessToken = await getAccessToken(shop.shopDomain);
+    if (!accessToken) {
+      res.status(401).json({ error: "NO_ACCESS_TOKEN" });
+      return;
+    }
+    const client = new ShopifyGraphQLClient({ shopDomain: shop.shopDomain, accessToken });
 
     const updateItems = latestRun.items;
     const diffs = [];
 
+    // Batch-fetch live Shopify details for all matched products upfront
+    const matchedShopifyIds = [
+      ...new Set(updateItems.map((i) => i.matchedShopifyId).filter((id): id is string => !!id)),
+    ];
+    let liveDetails: Awaited<ReturnType<typeof fetchProductDetails>>;
+    try {
+      liveDetails = await fetchProductDetails(client, matchedShopifyIds);
+    } catch (err) {
+      getLogger().warn("Failed to fetch live Shopify details for updates — price diffs unavailable", {
+        error: (err as Error).message,
+      });
+      liveDetails = new Map();
+    }
+
+    // Load snapshots as fallback for identity fields when live fetch fails
+    const snapshots = await prisma.shopifyProductSnapshot.findMany({
+      where: { shopId, shopifyProductId: { in: matchedShopifyIds } },
+      include: { variants: true },
+    });
+    const snapshotMap = new Map(snapshots.map((s) => [s.shopifyProductId, s]));
+
     for (const item of updateItems) {
       if (!item.matchedShopifyId) continue;
 
-      // Load snapshot
-      const snapshot = await prisma.shopifyProductSnapshot.findFirst({
-        where: { shopId, shopifyProductId: item.matchedShopifyId },
-        include: { variants: true },
-      });
-      if (!snapshot) continue;
+      const liveDetail = liveDetails.get(item.matchedShopifyId);
+      const snapshot = snapshotMap.get(item.matchedShopifyId);
+      if (!liveDetail && !snapshot) continue;
 
       // Load supplier product
       const dbProduct = await prisma.catalogProduct.findFirst({
@@ -1062,7 +1098,7 @@ router.get("/:id/reconciliation/updates", async (req, res, next) => {
           })
         : null;
 
-      const variantMappings = (productMapping?.variantMappings ?? []).map((v) => ({
+      const persistedVariantMappings = (productMapping?.variantMappings ?? []).map((v) => ({
         id: v.id,
         sourceVariantKey: v.sourceVariantKey,
         sourceVariantFingerprint: v.sourceVariantFingerprint,
@@ -1073,37 +1109,75 @@ router.get("/:id/reconciliation/updates", async (req, res, next) => {
         skuSource: v.skuSource,
       }));
 
+      // Use live variant list if available (has price/cost); fall back to snapshot (identity-only)
+      const shopifyVariantsForDiff = liveDetail?.variants ?? snapshot!.variants.map((v) => ({
+        shopifyVariantId: v.shopifyVariantId,
+        shopifyProductId: v.shopifyProductId,
+        inventoryItemId: null,
+        sku: v.sku,
+        barcode: v.barcode,
+        price: null,
+        compareAtPrice: null,
+        cost: null,
+        inventoryQuantity: null,
+        inventoryPolicy: null,
+        taxable: null,
+        weight: null,
+        weightUnit: null,
+        option1: v.option1,
+        option2: v.option2,
+        option3: v.option3,
+      }));
+
+      // When no persisted variant mappings exist (LIKELY_EXISTING products matched by
+      // SKU/barcode but never imported through StoreKeeper), synthesize transient mappings
+      // from the variant list using SKU or barcode as the correlation key.
+      // Without this, diffVariants() classifies every supplier variant as "added".
+      let variantMappings = persistedVariantMappings;
+      if (persistedVariantMappings.length === 0 && shopifyVariantsForDiff.length > 0) {
+        variantMappings = supplierProduct.variants
+          .map((sv, i) => {
+            const shopifyVariant = shopifyVariantsForDiff.find((shv) => {
+              if (sv.sku?.trim() && shv.sku?.trim()) {
+                return sv.sku.trim().toLowerCase() === shv.sku.trim().toLowerCase();
+              }
+              if (sv.barcode?.trim() && shv.barcode?.trim()) {
+                return sv.barcode.trim().toLowerCase() === shv.barcode.trim().toLowerCase();
+              }
+              return false;
+            });
+            if (!shopifyVariant) return null;
+            const fingerprint = computeVariantFingerprint(supplierProduct.sourceKey, sv, i);
+            return {
+              id: `transient-${shopifyVariant.shopifyVariantId}`,
+              sourceVariantKey: sv.sourceKey,
+              sourceVariantFingerprint: fingerprint,
+              shopifyVariantId: shopifyVariant.shopifyVariantId,
+              sourceSku: sv.sku?.trim() ?? null,
+              barcode: sv.barcode?.trim() ?? null,
+              shopifySku: shopifyVariant.sku ?? null,
+              skuSource: sv.skuSource ?? (sv.sku?.trim() ? "SUPPLIER" : "NONE"),
+            };
+          })
+          .filter((m): m is NonNullable<typeof m> => m !== null);
+      }
+
+      const shopifyProductForDiff = liveDetail?.product ?? {
+        shopifyProductId: snapshot!.shopifyProductId,
+        title: snapshot!.title,
+        description: null,
+        handle: snapshot!.handle,
+        vendor: snapshot!.vendor,
+        productType: null,
+        status: snapshot!.status,
+        tags: [],
+        images: [],
+      };
+
       const diff = computeProductDiff(
         supplierProduct,
-        {
-          shopifyProductId: snapshot.shopifyProductId,
-          title: snapshot.title,
-          description: null,
-          handle: snapshot.handle,
-          vendor: snapshot.vendor,
-          productType: null,
-          status: snapshot.status,
-          tags: [],
-          images: [],
-        },
-        snapshot.variants.map((v) => ({
-          shopifyVariantId: v.shopifyVariantId,
-          shopifyProductId: v.shopifyProductId,
-          inventoryItemId: null,
-          sku: v.sku,
-          barcode: v.barcode,
-          price: null,
-          compareAtPrice: null,
-          cost: null,
-          inventoryQuantity: null,
-          inventoryPolicy: null,
-          taxable: null,
-          weight: null,
-          weightUnit: null,
-          option1: v.option1,
-          option2: v.option2,
-          option3: v.option3,
-        })),
+        shopifyProductForDiff,
+        shopifyVariantsForDiff,
         variantMappings,
       );
 
