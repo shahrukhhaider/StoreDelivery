@@ -195,12 +195,28 @@ export async function runReconciliation(
       const detail = shopifyDetails.get(c.matchedShopifyProductId);
       const supplierProduct = productByKey.get(c.sourceProductKey);
 
-      if (!detail || !supplierProduct) {
-        // Can't diff — treat as NO_CHANGE (safe default)
+      if (!supplierProduct) {
+        // Supplier product not found — treat as NO_CHANGE (safe default)
         return {
           ...c,
           classification: "NO_CHANGE" as const,
           proposedAction: "NO_CHANGE" as const,
+        };
+      }
+
+      if (!detail) {
+        // Product was mapped but no longer exists in Shopify — it was deleted.
+        // Reclassify as NEW_PRODUCT so it gets recreated on import.
+        logger.info("Mapped product not found in Shopify — reclassifying as NEW_PRODUCT", {
+          sourceProductKey: c.sourceProductKey,
+          shopifyProductId: c.matchedShopifyProductId,
+        });
+        return {
+          ...c,
+          classification: "NEW_PRODUCT" as const,
+          proposedAction: "CREATE_PRODUCT" as const,
+          matchedShopifyProductId: null,
+          confidence: null,
         };
       }
 
