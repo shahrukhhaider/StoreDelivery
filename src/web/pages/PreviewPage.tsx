@@ -497,8 +497,8 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
                     </Text>
                   )}
                   {(plan.updateReviewCount ?? 0) > 0 && (
-                    <Text as="p" variant="bodyMd" tone="caution">
-                      {plan.updateReviewCount} product{plan.updateReviewCount !== 1 ? "s" : ""} already exist in Shopify with changes — review them on the Edit page
+                    <Text as="p" variant="bodyMd">
+                      Update <strong>{plan.updateReviewCount}</strong> existing product{plan.updateReviewCount !== 1 ? "s" : ""} with field changes
                     </Text>
                   )}
                 </BlockStack>
@@ -533,7 +533,7 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
                 <Divider />
                 <Text as="p" variant="bodySm" tone="subdued">
                   {(plan.updateReviewCount ?? 0) > 0
-                    ? `${plan.updateReviewCount} existing product${plan.updateReviewCount !== 1 ? "s" : ""} with differences will not be modified. Go back to the Edit page to review and apply those updates.`
+                    ? `Creates ${plan.productCount} new product${plan.productCount !== 1 ? "s" : ""} and updates ${plan.updateReviewCount} existing product${plan.updateReviewCount !== 1 ? "s" : ""}.`
                     : "Existing products will not be modified."
                   }
                 </Text>

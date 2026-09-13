@@ -162,21 +162,25 @@ export async function executeImport(operationId: string): Promise<void> {
     }
 
     // Determine which products to import vs skip vs update based on classification
-    // NEW_PRODUCT → create, UPDATE_REVIEW → skip (handled via update review API),
-    // EXISTING_MAPPED/NO_CHANGE → skip, LIKELY_EXISTING → skip,
-    // NEEDS_REVIEW → skip (hold for merchant)
+    // NEW_PRODUCT → create
+    // UPDATE_REVIEW → update existing Shopify product via applyProductUpdate
+    // EXISTING_MAPPED/NO_CHANGE/LIKELY_EXISTING/NEEDS_REVIEW → skip
     const toCreateKeys = new Set<string>();
+    const toUpdateKeys = new Set<string>();
     const toSkipKeys = new Set<string>();
 
     for (const c of classifications) {
       if (c.classification === "NEW_PRODUCT") {
         toCreateKeys.add(c.sourceProductKey);
+      } else if (c.classification === "UPDATE_REVIEW") {
+        toUpdateKeys.add(c.sourceProductKey);
       } else {
         toSkipKeys.add(c.sourceProductKey);
       }
     }
 
     const toImport = catalogProducts.filter((p) => toCreateKeys.has(p.sourceKey));
+    const toUpdate = catalogProducts.filter((p) => toUpdateKeys.has(p.sourceKey));
     const toSkip = catalogProducts.filter((p) => toSkipKeys.has(p.sourceKey));
 
     // Check for existing import items (resumability)
@@ -198,6 +202,14 @@ export async function executeImport(operationId: string): Promise<void> {
           importOperationId: operationId,
           sourceProductKey: p.sourceKey,
           action: "create" as const,
+          status: "pending" as const,
+        })),
+      ...toUpdate
+        .filter((p) => !existingKeys.has(p.sourceKey))
+        .map((p) => ({
+          importOperationId: operationId,
+          sourceProductKey: p.sourceKey,
+          action: "update" as const,
           status: "pending" as const,
         })),
       ...toSkip
@@ -292,6 +304,142 @@ export async function executeImport(operationId: string): Promise<void> {
         });
       },
     });
+
+    // Apply updates to existing products (UPDATE_REVIEW)
+    if (toUpdate.length > 0) {
+      logger.info("Applying updates to existing Shopify products", { count: toUpdate.length });
+
+      const { runReconciliation: _r, ...rest } = await import("../reconciliation/reconciliation-service.js").then(m => m);
+      const { fetchProductDetails } = await import("../shopify/product-detail-fetcher.js");
+      const { computeProductDiff } = await import("../../engine/reconciliation/diff-engine.js");
+      const { applyProductUpdate } = await import("../shopify/update-writer.js");
+
+      // Get the latest run to find shopify product IDs for UPDATE_REVIEW items
+      const latestRun = await prisma.catalogRun.findFirst({
+        where: { catalogId: operation.catalogId },
+        orderBy: { completedAt: "desc" },
+        include: {
+          items: {
+            where: { classification: "UPDATE_REVIEW" },
+            select: { sourceProductKey: true, matchedShopifyId: true, productMappingId: true },
+          },
+        },
+      });
+
+      const runItemByKey = new Map(
+        (latestRun?.items ?? []).map((i) => [i.sourceProductKey, i]),
+      );
+
+      // Fetch live Shopify details for all UPDATE_REVIEW products
+      const shopifyIds = [...new Set(
+        [...runItemByKey.values()]
+          .map((i) => i.matchedShopifyId)
+          .filter((id): id is string => !!id),
+      )];
+
+      const liveDetails = shopifyIds.length > 0
+        ? await fetchProductDetails(client, shopifyIds)
+        : new Map();
+
+      const productByKey = new Map(toUpdate.map((p) => [p.sourceKey, p]));
+
+      for (const sourceKey of toUpdateKeys) {
+        const runItem = runItemByKey.get(sourceKey);
+        const supplierProduct = productByKey.get(sourceKey);
+        if (!runItem?.matchedShopifyId || !supplierProduct) {
+          await prisma.importItem.updateMany({
+            where: { importOperationId: operationId, sourceProductKey: sourceKey },
+            data: { status: "failed", errorCode: "MISSING_DATA" },
+          });
+          failedCount++;
+          continue;
+        }
+
+        const liveDetail = liveDetails.get(runItem.matchedShopifyId);
+        if (!liveDetail) {
+          await prisma.importItem.updateMany({
+            where: { importOperationId: operationId, sourceProductKey: sourceKey },
+            data: { status: "failed", errorCode: "SHOPIFY_DETAIL_MISSING" },
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Load variant mappings
+        const productMapping = runItem.productMappingId
+          ? await prisma.productMapping.findUnique({
+              where: { id: runItem.productMappingId },
+              include: { variantMappings: true },
+            })
+          : null;
+
+        const variantMappings = (productMapping?.variantMappings ?? []).map((v) => ({
+          id: v.id,
+          sourceVariantKey: v.sourceVariantKey,
+          sourceVariantFingerprint: v.sourceVariantFingerprint,
+          shopifyVariantId: v.shopifyVariantId,
+          sourceSku: v.sourceSku,
+          barcode: v.barcode,
+          shopifySku: v.shopifySku,
+          skuSource: v.skuSource,
+        }));
+
+        const diff = computeProductDiff(supplierProduct, liveDetail.product, liveDetail.variants, variantMappings);
+
+        // Build inventoryItemIds map
+        const inventoryItemIds = new Map<string, string>();
+        for (const v of liveDetail.variants) {
+          if (v.shopifyVariantId && v.inventoryItemId) {
+            inventoryItemIds.set(v.shopifyVariantId, v.inventoryItemId);
+          }
+        }
+
+        const productChanges = diff.productChanges.map((c) => ({ ...c, selected: true }));
+        const variantChanges = diff.variantChanges.map((v) => ({
+          ...v,
+          changes: v.changes.map((c) => ({ ...c, selected: true })),
+        }));
+
+        const updateResult = await applyProductUpdate(client, {
+          shopifyProductId: runItem.matchedShopifyId,
+          sourceProductKey: sourceKey,
+          shopId: operation.shopId,
+          shopDomain: operation.shop.shopDomain,
+          supplierProduct,
+          productChanges,
+          variantChanges,
+          inventoryItemIds,
+        });
+
+        await prisma.importItem.updateMany({
+          where: { importOperationId: operationId, sourceProductKey: sourceKey },
+          data: {
+            status: updateResult.success ? "success" : "failed",
+            shopifyProductId: runItem.matchedShopifyId,
+            errorCode: updateResult.errorCode ?? null,
+            errorMessage: updateResult.errorMessage ?? null,
+          },
+        });
+
+        if (updateResult.success) {
+          successCount++;
+        } else {
+          failedCount++;
+        }
+
+        await prisma.importOperation.update({
+          where: { id: operationId },
+          data: { successCount, failedCount },
+        });
+      }
+
+      logger.info("Updates applied", {
+        operationId,
+        total: toUpdate.length,
+        success: successCount,
+        failed: failedCount,
+      });
+    }
 
     // Mark operation as completed
     const finalStatus = failedCount > 0 && successCount === 0 ? "failed" : "completed";

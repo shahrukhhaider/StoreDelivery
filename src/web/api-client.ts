@@ -127,6 +127,7 @@ export type CatalogSummary = {
   uploadId: string;
   fileName: string;
   format: string;
+  uploadMode: "CATALOG_UPDATE" | "INVENTORY_UPDATE";
   schemaFingerprint: string;
   productCount: number;
   mappingCount: number;

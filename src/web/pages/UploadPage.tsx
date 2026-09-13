@@ -76,7 +76,7 @@ export function UploadPage({ onComplete }: Props) {
         });
       }
     },
-    [],
+    [uploadMode],  // uploadMode must be a dep so the closure captures the current value
   );
 
   const pollUpload = useCallback(

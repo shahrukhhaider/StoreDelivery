@@ -13,6 +13,7 @@ import { getPrisma } from "../db.js";
 import { getStorage } from "../storage/file-storage.js";
 import { getLogger } from "../logger.js";
 import { processCatalog } from "../../engine/pipeline.js";
+import { validateCatalog } from "../../engine/validation/index.js";
 import type { CatalogFormat } from "@shared/types/catalog.js";
 
 const POLL_INTERVAL_MS = 2000;
@@ -129,10 +130,17 @@ async function processNextUpload(): Promise<void> {
 
       await prisma.catalogProduct.createMany({
         data: uniqueProducts.map((p) => {
-          const hasBlocking = catalog.issues.some(
+          // Use the upload's actual mode to determine product status.
+          // processCatalog() always validates in CATALOG_UPDATE mode internally;
+          // for INVENTORY_UPDATE we re-derive status with the correct mode.
+          const uploadMode = pending.uploadMode ?? "CATALOG_UPDATE";
+          const modeIssues = uploadMode === "INVENTORY_UPDATE"
+            ? validateCatalog([p], "INVENTORY_UPDATE").issues
+            : catalog.issues;
+          const hasBlocking = modeIssues.some(
             (i) => i.severity === "blocking" && i.sourceKey === p.sourceKey,
           );
-          const hasWarning = catalog.issues.some(
+          const hasWarning = modeIssues.some(
             (i) => i.severity === "warning" && i.sourceKey === p.sourceKey,
           );
 

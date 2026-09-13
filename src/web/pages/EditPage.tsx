@@ -187,6 +187,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   const [page, setPage] = useState(1);
   const [fileName, setFileName] = useState<string | null>(null);
   const [vendorName, setVendorName] = useState<string | null>(null);
+  const [uploadMode, setUploadMode] = useState<"CATALOG_UPDATE" | "INVENTORY_UPDATE">("CATALOG_UPDATE");
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -210,7 +211,6 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   const [loadingMessage, setLoadingMessage] = useState("Loading catalog...");
   const [missingProducts, setMissingProducts] = useState<Array<{ shopifyProductId: string | null; sourceValue: string | null }>>([]);
   const [applyingUpdates, setApplyingUpdates] = useState(false);
-  const [updateResult, setUpdateResult] = useState<{ applied: number; failed: number; failures: Array<{ sourceProductKey: string; error?: string }> } | null>(null);
 
   // Side panel state
   const [selectedProductIssues, setSelectedProductIssues] = useState<EditIssue[]>([]);
@@ -307,6 +307,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
       getCatalogVendor(catalogId),
     ]).then(([catalogRes, vendorRes]) => {
       setFileName(catalogRes.fileName ?? null);
+      setUploadMode(catalogRes.uploadMode ?? "CATALOG_UPDATE");
       setVendorName(vendorRes.vendor?.name ?? null);
     }).catch(() => {});
 
@@ -643,7 +644,11 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   return (
     <Page
       title={vendorName ? `Edit Catalog — ${vendorName}` : "Edit Catalog"}
-      subtitle={[fileName, `${totalProducts} products${overrideStats.productsWithOverrides > 0 ? ` · ${overrideStats.productsWithOverrides} edited` : ""}`].filter(Boolean).join(" · ")}
+      subtitle={[
+        fileName,
+        uploadMode === "INVENTORY_UPDATE" ? "Inventory Update" : null,
+        `${totalProducts} products${overrideStats.productsWithOverrides > 0 ? ` · ${overrideStats.productsWithOverrides} edited` : ""}`,
+      ].filter(Boolean).join(" · ")}
       backAction={{ onAction: onBack }}
       primaryAction={{
         content: "Review Catalog Changes",
@@ -671,6 +676,18 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
         )}
 
         {/* Issue Summary Banner */}
+        {/* Wrong-mode hint: if CATALOG_UPDATE file has MISSING_TITLE blocking issues,
+            it may have been uploaded in the wrong mode */}
+        {uploadMode === "CATALOG_UPDATE" && (summary?.blocking ?? 0) > 0 &&
+          issues.some((i) => i.code === "MISSING_TITLE") && (
+          <Banner tone="warning" title="Looks like an Inventory Update file?">
+            <Text as="p" variant="bodySm">
+              This file has missing titles and options, which are required for creating new products.
+              If you only want to update prices, quantities, or other fields for existing products,
+              re-upload this file and select <strong>Inventory Update</strong> mode.
+            </Text>
+          </Banner>
+        )}
         {summary && (
           <Card>
             <InlineStack gap="600">
@@ -819,56 +836,11 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
                     <Text as="h3" variant="headingSm">
                       {updateReview.totalWithChanges} product{updateReview.totalWithChanges !== 1 ? "s" : ""} with updates
                     </Text>
-                    <Button
-                      onClick={async () => {
-                        setApplyingUpdates(true);
-                        try {
-                          const selections = updateReview.products.map((p) => ({
-                            sourceProductKey: p.sourceProductKey,
-                            fields: [
-                              ...p.productChanges.map((c) => ({ field: c.field, selected: true })),
-                              ...p.variantChanges.flatMap((v) =>
-                                v.changes.map((c) => ({ field: `variants.${c.field}`, selected: true })),
-                              ),
-                            ],
-                          }));
-                          const result = await applyUpdates(catalogId, selections);
-                          setUpdateResult({
-                            applied: result.applied,
-                            failed: result.failed,
-                            failures: result.results.filter((r) => !r.success),
-                          });
-                          loadData(1);
-                        } catch { /* silent */ } finally {
-                          setApplyingUpdates(false);
-                        }
-                      }}
-                      loading={applyingUpdates}
-                    >
-                      Apply All Updates
-                    </Button>
+                    <Badge tone="info">Will be applied on import</Badge>
                   </InlineStack>
 
-                  {updateResult && (
-                    <Banner
-                      title={`${updateResult.applied} applied, ${updateResult.failed} failed`}
-                      tone={updateResult.failed > 0 ? "warning" : "success"}
-                    >
-                      {updateResult.failures.length > 0 && (
-                        <BlockStack gap="100">
-                          {updateResult.failures.map((f) => (
-                            <Text as="p" variant="bodySm" key={f.sourceProductKey}>
-                              • <strong>{f.sourceProductKey}</strong>
-                              {f.error ? `: ${f.error}` : ""}
-                            </Text>
-                          ))}
-                        </BlockStack>
-                      )}
-                    </Banner>
-                  )}
-
                   <Text as="p" variant="bodySm" tone="subdued">
-                    These products exist in Shopify but the supplier data differs.
+                    These products exist in Shopify but the supplier data differs. The changes below will be applied when you click "Review Catalog Changes" and start the import.
                   </Text>
 
                   <Divider />

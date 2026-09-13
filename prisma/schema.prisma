@@ -186,6 +186,7 @@ model ImportOperation {
 
 enum ImportItemAction {
   create
+  update
   skip
 }
 

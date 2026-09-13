@@ -9,6 +9,7 @@ import { getPrisma } from "../db.js";
 import { getStorage } from "../storage/file-storage.js";
 import { getLogger } from "../logger.js";
 import { processCatalog } from "../../engine/pipeline.js";
+import { validateCatalog } from "../../engine/validation/index.js";
 import { createHash } from "crypto";
 import type { ShopRequest } from "./middleware.js";
 import { getShopId } from "./middleware.js";
@@ -29,7 +30,7 @@ router.get("/:id", async (req, res, next) => {
     const catalog = await prisma.catalog.findFirst({
       where: { id: req.params.id, shopId: getShopId(req) },
       include: {
-        upload: { select: { fileName: true, format: true } },
+        upload: { select: { fileName: true, format: true, uploadMode: true } },
         _count: {
           select: {
             catalogProducts: true,
@@ -78,6 +79,7 @@ router.get("/:id", async (req, res, next) => {
       uploadId: catalog.uploadId,
       fileName: catalog.upload.fileName,
       format: catalog.upload.format,
+      uploadMode: catalog.upload.uploadMode,
       schemaFingerprint: catalog.schemaFingerprint,
       productCount: catalog._count.catalogProducts,
       mappingCount: catalog._count.fieldMappings,
@@ -244,11 +246,18 @@ router.put("/:id/mappings", async (req, res, next) => {
 
       await prisma.catalogProduct.createMany({
         data: uniqueProducts.map((p) => {
-          const hasBlocking = result.catalog.issues.some(
-            (i) => i.severity === "blocking" && i.sourceKey === p.sourceKey,
+          // Re-derive blocking/warning status using the catalog's actual uploadMode.
+          // processCatalog() runs validation internally in CATALOG_UPDATE mode,
+          // so we need to re-evaluate for INVENTORY_UPDATE catalogs.
+          const modeAwareIssues = validateCatalog(
+            [p],
+            catalog.upload?.uploadMode ?? "CATALOG_UPDATE",
+          ).issues;
+          const hasBlocking = modeAwareIssues.some(
+            (i) => i.severity === "blocking" && (i.sourceKey === p.sourceKey || !i.sourceKey),
           );
-          const hasWarning = result.catalog.issues.some(
-            (i) => i.severity === "warning" && i.sourceKey === p.sourceKey,
+          const hasWarning = modeAwareIssues.some(
+            (i) => i.severity === "warning" && (i.sourceKey === p.sourceKey || !i.sourceKey),
           );
           return {
             catalogId: catalog.id,
@@ -389,6 +398,7 @@ router.get("/:id/issues", async (req, res, next) => {
 
     const catalog = await prisma.catalog.findFirst({
       where: { id: req.params.id, shopId: getShopId(req) },
+      include: { upload: { select: { uploadMode: true } } },
     });
     if (!catalog) {
       res.status(404).json({ error: "NOT_FOUND" });
@@ -412,7 +422,6 @@ router.get("/:id/issues", async (req, res, next) => {
       overridesByProduct.set(o.productId, list);
     }
 
-    const { validateCatalog } = await import("../../engine/validation/index.js");
     const { applyOverrides } = await import("../../engine/overrides/merge.js");
 
     const catalogProducts = products.map(
@@ -427,7 +436,7 @@ router.get("/:id/issues", async (req, res, next) => {
         return applyOverrides(source, productOverrides);
       },
     );
-    const validationResult = validateCatalog(catalogProducts);
+    const validationResult = validateCatalog(catalogProducts, catalog.upload?.uploadMode ?? "CATALOG_UPDATE");
 
     // Group issues by severity with full details
     const blockingIssues = validationResult.issues
