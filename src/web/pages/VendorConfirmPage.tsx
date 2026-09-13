@@ -29,6 +29,7 @@ import {
   getVendors,
   detectCatalogVendor,
   assignCatalogVendor,
+  getCatalog,
   type VendorItem,
   type VendorDetectionResult,
 } from "../api-client.js";
@@ -45,6 +46,7 @@ export function VendorConfirmPage({ catalogId, onComplete, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
 
   const [vendors, setVendors] = useState<VendorItem[]>([]);
   const [detection, setDetection] = useState<VendorDetectionResult | null>(null);
@@ -61,11 +63,13 @@ export function VendorConfirmPage({ catalogId, onComplete, onBack }: Props) {
     Promise.all([
       getVendors(),
       detectCatalogVendor(catalogId),
+      getCatalog(catalogId),
     ])
-      .then(([vendorsRes, detectionRes]) => {
+      .then(([vendorsRes, detectionRes, catalogRes]) => {
         if (cancelled) return;
         setVendors(vendorsRes.vendors);
         setDetection(detectionRes);
+        setFileName(catalogRes.fileName ?? null);
 
         // Pre-select based on confidence
         if (detectionRes.confidence === "HIGH" && detectionRes.matchedVendorId) {
@@ -133,7 +137,7 @@ export function VendorConfirmPage({ catalogId, onComplete, onBack }: Props) {
 
   if (loading) {
     return (
-      <Page title="Who is this catalog from?" backAction={{ onAction: onBack }}>
+      <Page title={fileName ? `Who is this catalog from? — ${fileName}` : "Who is this catalog from?"} backAction={{ onAction: onBack }}>
         <Card>
           <InlineStack align="center" gap="200">
             <Spinner size="small" />
@@ -157,7 +161,7 @@ export function VendorConfirmPage({ catalogId, onComplete, onBack }: Props) {
 
   return (
     <Page
-      title="Who is this catalog from?"
+      title={fileName ? `Who is this catalog from? — ${fileName}` : "Who is this catalog from?"}
       backAction={{ onAction: onBack }}
       primaryAction={{
         content: mode === "skip" ? "Skip and continue" : "Confirm vendor",

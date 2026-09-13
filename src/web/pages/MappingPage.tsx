@@ -21,6 +21,7 @@ import {
   getMappings,
   updateMappings,
   getCatalogVendor,
+  getCatalog,
   type MappingItem,
   type MappingUpdate,
 } from "../api-client.js";
@@ -73,6 +74,7 @@ export function MappingPage({ catalogId, onComplete, onBack }: Props) {
   const [mappings, setMappings] = useState<MappingItem[]>([]);
   const [vendorId, setVendorId] = useState<string | null>(null);
   const [vendorName, setVendorName] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,11 +84,13 @@ export function MappingPage({ catalogId, onComplete, onBack }: Props) {
     Promise.all([
       getMappings(catalogId),
       getCatalogVendor(catalogId),
+      getCatalog(catalogId),
     ])
-      .then(([mappingsRes, vendorRes]) => {
+      .then(([mappingsRes, vendorRes, catalogRes]) => {
         setMappings(mappingsRes.mappings);
         setVendorId(mappingsRes.vendorId ?? null);
         setVendorName(vendorRes.vendor?.name ?? null);
+        setFileName(catalogRes.fileName ?? null);
         setLoading(false);
       })
       .catch((err) => {
@@ -214,8 +218,8 @@ export function MappingPage({ catalogId, onComplete, onBack }: Props) {
 
   return (
     <Page
-      title="Review Column Mappings"
-      subtitle={`${highCount} auto-mapped, ${reviewCount} need review`}
+      title={vendorName ? `Review Column Mappings — ${vendorName}` : "Review Column Mappings"}
+      subtitle={[fileName, `${highCount} auto-mapped, ${reviewCount} need review`].filter(Boolean).join(" · ")}
       backAction={{ onAction: onBack }}
       primaryAction={{
         content: "Save & Preview",

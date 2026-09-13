@@ -850,3 +850,97 @@ describe("diff — discontinued variants", () => {
     expect(disc[0].sourceVariantKey).toBe("V1");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Image diff — CDN URL false-positive fix
+// ---------------------------------------------------------------------------
+
+describe("diff — images CDN URL tolerance", () => {
+  it("no change when same image filename but different CDN domain/version", () => {
+    // Shopify converts source URLs to CDN URLs — should not show as a diff
+    const diff = computeProductDiff(
+      supplier({
+        title: "T", vendor: "V",
+        images: [{ sourceUrl: "https://mystore.com/products/photo.jpg", position: 1 }],
+      }),
+      shopifyProduct({
+        title: "T", vendor: "V",
+        images: [{ url: "https://cdn.shopify.com/s/files/1/0803/6591/products/photo.jpg?v=1426708827", altText: null }],
+      }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "images")).toBeUndefined();
+  });
+
+  it("no change when same filename with different version param (?v=)", () => {
+    const diff = computeProductDiff(
+      supplier({
+        title: "T", vendor: "V",
+        images: [{ sourceUrl: "https://cdn.shopify.com/s/files/1/products/skin-care.jpg", position: 1 }],
+      }),
+      shopifyProduct({
+        title: "T", vendor: "V",
+        images: [{ url: "https://cdn.shopify.com/s/files/1/products/skin-care.jpg?v=9999", altText: null }],
+      }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "images")).toBeUndefined();
+  });
+
+  it("detects change when filenames are genuinely different", () => {
+    const diff = computeProductDiff(
+      supplier({
+        title: "T", vendor: "V",
+        images: [{ sourceUrl: "https://mystore.com/products/new-photo.jpg", position: 1 }],
+      }),
+      shopifyProduct({
+        title: "T", vendor: "V",
+        images: [{ url: "https://cdn.shopify.com/s/files/1/products/old-photo.jpg?v=123", altText: null }],
+      }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "images")).toBeDefined();
+  });
+
+  it("no change with 2 images same filenames regardless of CDN transform", () => {
+    const diff = computeProductDiff(
+      supplier({
+        title: "T", vendor: "V",
+        images: [
+          { sourceUrl: "https://store.com/products/a.jpg", position: 1 },
+          { sourceUrl: "https://store.com/products/b.jpg", position: 2 },
+        ],
+      }),
+      shopifyProduct({
+        title: "T", vendor: "V",
+        images: [
+          { url: "https://cdn.shopify.com/s/files/b.jpg?v=1", altText: null },
+          { url: "https://cdn.shopify.com/s/files/a.jpg?v=2", altText: null },
+        ],
+      }),
+      [], [],
+    );
+    expect(diff.productChanges.find((c) => c.field === "images")).toBeUndefined();
+  });
+
+  it("detects change when image count differs even with CDN transform", () => {
+    const diff = computeProductDiff(
+      supplier({
+        title: "T", vendor: "V",
+        images: [
+          { sourceUrl: "https://store.com/products/a.jpg", position: 1 },
+          { sourceUrl: "https://store.com/products/b.jpg", position: 2 },
+        ],
+      }),
+      shopifyProduct({
+        title: "T", vendor: "V",
+        images: [{ url: "https://cdn.shopify.com/s/files/a.jpg?v=1", altText: null }],
+      }),
+      [], [],
+    );
+    const c = diff.productChanges.find((ci) => ci.field === "images");
+    expect(c).toBeDefined();
+    expect(c!.shopifyValue).toBe("1 image");
+    expect(c!.supplierValue).toBe("2 images");
+  });
+});

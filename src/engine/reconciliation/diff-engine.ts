@@ -80,10 +80,21 @@ function diffProductFields(
   const supplierTags = (supplier.tags ?? []).slice().sort().join(", ");
   compareField(changes, "tags", shopifyTags || null, supplierTags || null);
 
-  // Images: compare by URL set (order-independent)
-  const shopifyImageUrls = (shopify.images ?? []).map((i) => i.url).sort().join("|");
-  const supplierImageUrls = (supplier.images ?? []).map((i) => i.sourceUrl).sort().join("|");
-  if (shopifyImageUrls !== supplierImageUrls && (shopifyImageUrls || supplierImageUrls)) {
+  // Images: compare by filename set (order-independent, ignores CDN domain/version params)
+  // Shopify transforms source URLs to CDN URLs after import, so full URL comparison
+  // produces false positives on re-upload of the same file.
+  const extractImageFilename = (url: string): string => {
+    try {
+      const path = new URL(url).pathname;
+      return path.split("/").pop()?.split("?")[0] ?? url;
+    } catch {
+      return url.split("/").pop()?.split("?")[0] ?? url;
+    }
+  };
+
+  const shopifyImageFiles = (shopify.images ?? []).map((i) => extractImageFilename(i.url)).sort().join("|");
+  const supplierImageFiles = (supplier.images ?? []).map((i) => extractImageFilename(i.sourceUrl)).sort().join("|");
+  if (shopifyImageFiles !== supplierImageFiles && (shopifyImageFiles || supplierImageFiles)) {
     const shopifyCount = (shopify.images ?? []).length;
     const supplierCount = (supplier.images ?? []).length;
     changes.push({

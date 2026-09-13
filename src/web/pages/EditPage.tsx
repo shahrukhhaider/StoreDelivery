@@ -32,6 +32,8 @@ import {
   findSimilarIssues,
   runReconciliation as runReconApi,
   applyUpdates,
+  getCatalog,
+  getCatalogVendor,
   type EditIssueSummary,
   type EditIssue,
   type PreviewProduct,
@@ -143,9 +145,9 @@ function EditableCell({
 
   return (
     <div
-      onClick={() => { setDraft(value); setEditing(true); }}
+      onDoubleClick={(e) => { e.stopPropagation(); setDraft(value); setEditing(true); }}
       style={{
-        cursor: "pointer",
+        cursor: "text",
         padding: "4px 8px",
         borderRadius: "4px",
         background: isModified ? "var(--p-color-bg-surface-warning)" : undefined,
@@ -183,6 +185,8 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   const [catalogLevelWarningCount, setCatalogLevelWarningCount] = useState(0);
   const [totalProducts, setTotalProducts] = useState(0);
   const [page, setPage] = useState(1);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [vendorName, setVendorName] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -296,7 +300,16 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   }, [page, loadData]);
 
   // Run auto-fix on first load (silently — only shows if it finds something)
+  // Also fetch catalog metadata (fileName, vendor) for display throughout
   useEffect(() => {
+    Promise.all([
+      getCatalog(catalogId),
+      getCatalogVendor(catalogId),
+    ]).then(([catalogRes, vendorRes]) => {
+      setFileName(catalogRes.fileName ?? null);
+      setVendorName(vendorRes.vendor?.name ?? null);
+    }).catch(() => {});
+
     if (!autoFixResult) {
       runAutoFix(catalogId).then((result) => {
         if (result.totalFixed > 0) {
@@ -629,8 +642,8 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
 
   return (
     <Page
-      title="Edit Catalog Update"
-      subtitle={`${total} products${overrideStats.productsWithOverrides > 0 ? ` · ${overrideStats.productsWithOverrides} edited` : ""}`}
+      title={vendorName ? `Edit Catalog — ${vendorName}` : "Edit Catalog"}
+      subtitle={[fileName, `${total} products${overrideStats.productsWithOverrides > 0 ? ` · ${overrideStats.productsWithOverrides} edited` : ""}`].filter(Boolean).join(" · ")}
       backAction={{ onAction: onBack }}
       primaryAction={{
         content: "Review Catalog Changes",
@@ -775,9 +788,9 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
             <Card>
               <BlockStack gap="200">
                 <Text as="h3" variant="headingSm">
-                  {relevantIssues.length} issue{relevantIssues.length !== 1 ? "s" : ""} across {
+                  {grouped.size} issue type{grouped.size !== 1 ? "s" : ""} across {
                     new Set(relevantIssues.map((i) => i.sourceKey).filter(Boolean)).size
-                  } products
+                  } product{new Set(relevantIssues.map((i) => i.sourceKey).filter(Boolean)).size !== 1 ? "s" : ""}
                 </Text>
                 <BlockStack gap="100">
                   {[...grouped.entries()].map(([code, keys]) => (

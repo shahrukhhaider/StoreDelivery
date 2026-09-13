@@ -173,6 +173,18 @@ function buildProductSetInput(
     }
     if (v.compareAtPrice) variant.compareAtPrice = v.compareAtPrice;
 
+    // Weight — write at create time so re-uploads don't show false-positive diffs
+    if (v.weight != null && v.weightUnit) {
+      variant.inventoryItem = {
+        measurement: {
+          weight: {
+            value: v.weight,
+            unit: normalizeWeightUnitForShopify(v.weightUnit),
+          },
+        },
+      };
+    }
+
     // Build optionValues aligned with product's declared options
     const optionValues = optionNames.map((optName) => {
       // Try to find a value for this option from the variant
@@ -451,3 +463,18 @@ async function writeOneProduct(
 
 /** Exported for testing */
 export { buildProductSetInput as _buildProductSetInput, buildProductOptions as _buildProductOptions };
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Normalize weight unit aliases to Shopify enum values. */
+function normalizeWeightUnitForShopify(unit: string): string {
+  switch (unit.toLowerCase().trim()) {
+    case "kg": case "kilogram": case "kilograms": return "KILOGRAMS";
+    case "g":  case "gram":     case "grams":     return "GRAMS";
+    case "lb": case "lbs":      case "pound":     case "pounds": return "POUNDS";
+    case "oz": case "ounce":    case "ounces":    return "OUNCES";
+    default: return unit.toUpperCase();
+  }
+}

@@ -568,8 +568,21 @@ router.get("/:id/edit/preview", async (req, res, next) => {
       for (const issue of validation.issues) {
         const sevMatch = !issueSeverity || issue.severity === issueSeverity;
         const typeMatch = !issueType || classifyIssueType(issue.code) === issueType;
-        if (sevMatch && typeMatch && issue.sourceKey) {
-          matchingKeys.add(issue.sourceKey);
+        if (sevMatch && typeMatch) {
+          if (issue.sourceKey) {
+            // Per-product issue — add directly
+            matchingKeys.add(issue.sourceKey);
+          } else {
+            // Catalog-level issue (e.g. DUPLICATE_SKU, DUPLICATE_BARCODE) — extract
+            // affected sourceKeys from the message: "... in N products: key1, key2"
+            const match = issue.message.match(/products?:\s*(.+)$/i);
+            if (match) {
+              for (const key of match[1].split(",")) {
+                const trimmed = key.trim();
+                if (trimmed) matchingKeys.add(trimmed);
+              }
+            }
+          }
         }
       }
       filtered = resolvedProducts.filter((p) => matchingKeys.has(p.sourceKey));
