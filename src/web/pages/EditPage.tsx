@@ -643,7 +643,7 @@ export function EditPage({ catalogId, onBack, onImport }: Props) {
   return (
     <Page
       title={vendorName ? `Edit Catalog — ${vendorName}` : "Edit Catalog"}
-      subtitle={[fileName, `${total} products${overrideStats.productsWithOverrides > 0 ? ` · ${overrideStats.productsWithOverrides} edited` : ""}`].filter(Boolean).join(" · ")}
+      subtitle={[fileName, `${totalProducts} products${overrideStats.productsWithOverrides > 0 ? ` · ${overrideStats.productsWithOverrides} edited` : ""}`].filter(Boolean).join(" · ")}
       backAction={{ onAction: onBack }}
       primaryAction={{
         content: "Review Catalog Changes",
