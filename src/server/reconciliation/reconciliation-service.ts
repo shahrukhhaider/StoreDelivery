@@ -222,7 +222,40 @@ export async function runReconciliation(
 
       // Load variant mappings for correlating supplier→Shopify variants
       const productMapping = existingMappings.get(c.sourceProductKey);
-      const variantMappings = productMapping?.variants ?? [];
+      const persistedVariantMappings = productMapping?.variants ?? [];
+
+      // When no persisted variant mappings exist (LIKELY_EXISTING products matched by
+      // SKU/barcode but never imported through StoreKeeper), synthesize transient mappings
+      // from the live Shopify variants using SKU or barcode as the correlation key.
+      // Without this, diffVariants() classifies every supplier variant as "added".
+      let variantMappings = persistedVariantMappings;
+      if (persistedVariantMappings.length === 0 && detail.variants.length > 0) {
+        variantMappings = supplierProduct.variants
+          .map((sv, i) => {
+            const shopifyVariant = detail.variants.find((shv) => {
+              if (sv.sku?.trim() && shv.sku?.trim()) {
+                return sv.sku.trim().toLowerCase() === shv.sku.trim().toLowerCase();
+              }
+              if (sv.barcode?.trim() && shv.barcode?.trim()) {
+                return sv.barcode.trim().toLowerCase() === shv.barcode.trim().toLowerCase();
+              }
+              return false;
+            });
+            if (!shopifyVariant) return null;
+            const fingerprint = computeVariantFingerprint(supplierProduct.sourceKey, sv, i);
+            return {
+              id: `transient-${shopifyVariant.shopifyVariantId}`,
+              sourceVariantKey: sv.sourceKey,
+              sourceVariantFingerprint: fingerprint,
+              shopifyVariantId: shopifyVariant.shopifyVariantId,
+              sourceSku: sv.sku?.trim() ?? null,
+              barcode: sv.barcode?.trim() ?? null,
+              shopifySku: shopifyVariant.sku ?? null,
+              skuSource: sv.skuSource ?? (sv.sku?.trim() ? "SUPPLIER" : "NONE"),
+            };
+          })
+          .filter((m): m is NonNullable<typeof m> => m !== null);
+      }
 
       const diff = computeProductDiff(
         supplierProduct,
