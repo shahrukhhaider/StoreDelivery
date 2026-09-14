@@ -13,6 +13,7 @@ import { getAccessToken } from "../shopify/auth.js";
 import { writeProducts, getPrimaryLocationId, type WriteResult } from "../shopify/writer.js";
 import { persistVariantMappings } from "../shopify/variant-mapping.js";
 import { runReconciliation, persistReconciliationMappings } from "../reconciliation/reconciliation-service.js";
+import { buildStoredDiff } from "./diff-serializer.js";
 import type { CatalogProduct } from "@shared/types/catalog.js";
 
 /**
@@ -416,6 +417,9 @@ export async function executeImport(operationId: string): Promise<void> {
           changes: v.changes.map((c) => ({ ...c, selected: true })),
         }));
 
+        // Build the stored diff before applying — captures pre-import Shopify values (rollback target)
+        const storedDiff = buildStoredDiff(productChanges, variantChanges);
+
         const updateResult = await applyProductUpdate(client, {
           shopifyProductId: runItem.matchedShopifyId,
           sourceProductKey: sourceKey,
@@ -434,6 +438,7 @@ export async function executeImport(operationId: string): Promise<void> {
             shopifyProductId: runItem.matchedShopifyId,
             errorCode: updateResult.errorCode ?? null,
             errorMessage: updateResult.errorMessage ?? null,
+            ...(updateResult.success ? { appliedDiff: storedDiff } : {}),
           },
         });
 

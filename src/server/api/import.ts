@@ -210,6 +210,7 @@ router.get("/:operationId/items", async (req, res, next) => {
         skipReason: item.status === "skipped"
           ? getSkipReason(skipReasonMap.get(item.sourceProductKey))
           : null,
+        appliedDiff: item.appliedDiff ?? null,
       })),
     });
   } catch (err) {

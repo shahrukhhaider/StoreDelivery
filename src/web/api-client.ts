@@ -415,6 +415,24 @@ export async function getImportStatus(operationId: string): Promise<ImportStatus
   return request(`/imports/${operationId}`);
 }
 
+export type StoredFieldChange = {
+  field: string;
+  shopifyValue: string | null;
+  supplierValue: string | null;
+};
+
+export type StoredVariantDiff = {
+  sourceVariantKey: string;
+  shopifyVariantId: string | null;
+  status: "changed" | "added" | "discontinued";
+  changes: StoredFieldChange[];
+};
+
+export type StoredDiff = {
+  productChanges: StoredFieldChange[];
+  variantChanges: StoredVariantDiff[];
+};
+
 export type ImportItemEntry = {
   id: string;
   sourceProductKey: string;
@@ -424,6 +442,7 @@ export type ImportItemEntry = {
   errorCode?: string | null;
   errorMessage?: string | null;
   skipReason?: string | null;
+  appliedDiff?: StoredDiff | null;
 };
 
 export type ImportItemsResponse = {

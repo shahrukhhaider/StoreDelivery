@@ -13,3 +13,4 @@ prisma/*.db-journal
 .DS_Store
 *.tsbuildinfo
 .uploads/
+.kiro

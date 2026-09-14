@@ -16,7 +16,7 @@ import {
   ProgressBar,
   Pagination,
   Spinner,
-  Divider,
+  Collapsible,
 } from "@shopify/polaris";
 import {
   getImportStatus,
@@ -24,6 +24,8 @@ import {
   retryImport,
   type ImportStatus,
   type ImportItemEntry,
+  type StoredFieldChange,
+  type StoredVariantDiff,
 } from "../api-client.js";
 
 type Props = {
@@ -41,6 +43,71 @@ function formatElapsed(ms: number): string {
   return `${hr}h ${min % 60}m`;
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  description: "Description",
+  vendor: "Vendor",
+  productType: "Product Type",
+  tags: "Tags",
+  images: "Images",
+  price: "Price",
+  compareAtPrice: "Compare At Price",
+  barcode: "Barcode",
+  cost: "Cost",
+  inventoryQuantity: "Inventory Qty",
+  weight: "Weight",
+  taxable: "Taxable",
+  inventoryPolicy: "Inventory Policy",
+};
+
+function FieldChangeRow({ change }: { change: StoredFieldChange }) {
+  return (
+    <InlineStack gap="200" blockAlign="center" wrap={false}>
+      <Text as="span" variant="bodySm" fontWeight="semibold">
+        {FIELD_LABELS[change.field] ?? change.field}:
+      </Text>
+      <Text as="span" variant="bodySm" tone="subdued" textDecorationLine="line-through">
+        {change.shopifyValue ?? "(empty)"}
+      </Text>
+      <Text as="span" variant="bodySm" tone="subdued">→</Text>
+      <Text as="span" variant="bodySm">
+        {change.supplierValue ?? "(empty)"}
+      </Text>
+    </InlineStack>
+  );
+}
+
+function VariantDiffBlock({ v }: { v: StoredVariantDiff }) {
+  if (v.status === "added") {
+    return (
+      <InlineStack gap="200" blockAlign="center">
+        <Badge tone="success">New</Badge>
+        <Text as="span" variant="bodySm">{v.sourceVariantKey}</Text>
+        <Text as="span" variant="bodySm" tone="subdued">Added to Shopify</Text>
+      </InlineStack>
+    );
+  }
+  if (v.status === "discontinued") {
+    return (
+      <InlineStack gap="200" blockAlign="center">
+        <Badge tone="warning">Removed</Badge>
+        <Text as="span" variant="bodySm">{v.sourceVariantKey}</Text>
+        <Text as="span" variant="bodySm" tone="subdued">No longer in supplier file</Text>
+      </InlineStack>
+    );
+  }
+  return (
+    <BlockStack gap="100">
+      <Text as="span" variant="bodySm" fontWeight="semibold" tone="subdued">
+        {v.sourceVariantKey}
+      </Text>
+      {v.changes.map((c, i) => (
+        <FieldChangeRow key={i} change={c} />
+      ))}
+    </BlockStack>
+  );
+}
+
 export function ResultsPage({ operationId, onBack }: Props) {
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const [items, setItems] = useState<ImportItemEntry[]>([]);
@@ -51,7 +118,20 @@ export function ResultsPage({ operationId, onBack }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [filter, setFilter] = useState<string | undefined>(undefined);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const toggleRow = useCallback((id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -160,39 +240,119 @@ export function ResultsPage({ operationId, onBack }: Props) {
     }
   }
 
-  const rowMarkup = items.map((item, index) => (
-    <IndexTable.Row id={item.id} key={item.id} position={index}>
-      <IndexTable.Cell>
-        <Text as="span" fontWeight="semibold">
-          {item.sourceProductKey}
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>{item.action}</IndexTable.Cell>
-      <IndexTable.Cell>{itemStatusBadge(item.status, item.action)}</IndexTable.Cell>
-      <IndexTable.Cell>
-        {item.shopifyProductId ? (
-          <Text as="span" variant="bodySm" tone="subdued">
-            {item.shopifyProductId}
+  const hasDiff = (item: ImportItemEntry) =>
+    item.action === "update" && item.status === "success";
+
+  const rowMarkup = items.flatMap((item, index) => {
+    const expanded = expandedRows.has(item.id);
+    const showDiff = hasDiff(item);
+
+    const mainRow = (
+      <IndexTable.Row id={item.id} key={item.id} position={index}>
+        <IndexTable.Cell>
+          <Text as="span" fontWeight="semibold">
+            {item.sourceProductKey}
           </Text>
-        ) : (
-          "—"
-        )}
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        {item.errorMessage ? (
-          <Text as="span" variant="bodySm" tone="critical">
-            {item.errorMessage}
-          </Text>
-        ) : item.skipReason ? (
-          <Text as="span" variant="bodySm" tone="subdued">
-            {item.skipReason}
-          </Text>
-        ) : (
-          "—"
-        )}
-      </IndexTable.Cell>
-    </IndexTable.Row>
-  ));
+        </IndexTable.Cell>
+        <IndexTable.Cell>{item.action}</IndexTable.Cell>
+        <IndexTable.Cell>{itemStatusBadge(item.status, item.action)}</IndexTable.Cell>
+        <IndexTable.Cell>
+          {item.shopifyProductId ? (
+            <Text as="span" variant="bodySm" tone="subdued">
+              {item.shopifyProductId}
+            </Text>
+          ) : (
+            "—"
+          )}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {item.errorMessage ? (
+            <Text as="span" variant="bodySm" tone="critical">
+              {item.errorMessage}
+            </Text>
+          ) : item.skipReason ? (
+            <Text as="span" variant="bodySm" tone="subdued">
+              {item.skipReason}
+            </Text>
+          ) : (
+            "—"
+          )}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {showDiff ? (
+            <Button
+              variant="plain"
+              size="slim"
+              onClick={() => toggleRow(item.id)}
+            >
+              {expanded ? "Hide changes" : "Show changes"}
+            </Button>
+          ) : (
+            "—"
+          )}
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    );
+
+    if (!showDiff || !expanded) return [mainRow];
+
+    const diff = item.appliedDiff;
+    const detailRow = (
+      <IndexTable.Row
+        id={`${item.id}-diff`}
+        key={`${item.id}-diff`}
+        position={index}
+      >
+        {/* Empty cells to align with table columns */}
+        <IndexTable.Cell />
+        <IndexTable.Cell />
+        <IndexTable.Cell />
+        <IndexTable.Cell />
+        <IndexTable.Cell />
+        <IndexTable.Cell>
+          <Collapsible id={`diff-${item.id}`} open={expanded}>
+            <div style={{ padding: "8px 0 12px" }}>
+              {!diff ? (
+                <Text as="p" variant="bodySm" tone="subdued">
+                  No change detail available.
+                </Text>
+              ) : (
+                <BlockStack gap="200">
+                  {diff.productChanges.length > 0 && (
+                    <BlockStack gap="100">
+                      <Text as="p" variant="bodySm" tone="subdued" fontWeight="semibold">
+                        Product fields
+                      </Text>
+                      {diff.productChanges.map((c, i) => (
+                        <FieldChangeRow key={i} change={c} />
+                      ))}
+                    </BlockStack>
+                  )}
+                  {diff.variantChanges.length > 0 && (
+                    <BlockStack gap="200">
+                      <Text as="p" variant="bodySm" tone="subdued" fontWeight="semibold">
+                        Variant changes
+                      </Text>
+                      {diff.variantChanges.map((v, i) => (
+                        <VariantDiffBlock key={i} v={v} />
+                      ))}
+                    </BlockStack>
+                  )}
+                  {diff.productChanges.length === 0 && diff.variantChanges.length === 0 && (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      No change detail available.
+                    </Text>
+                  )}
+                </BlockStack>
+              )}
+            </div>
+          </Collapsible>
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    );
+
+    return [mainRow, detailRow];
+  });
 
   return (
     <Page
@@ -350,6 +510,7 @@ export function ResultsPage({ operationId, onBack }: Props) {
               { title: "Status" },
               { title: "Shopify ID" },
               { title: "Reason" },
+              { title: "Changes" },
             ]}
             selectable={false}
           >

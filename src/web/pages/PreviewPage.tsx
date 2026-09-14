@@ -541,10 +541,18 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
 
                 <Divider />
                 <Text as="p" variant="bodySm" tone="subdued">
-                  {(plan.updateReviewCount ?? 0) > 0
-                    ? `Creates ${plan.productCount} new product${plan.productCount !== 1 ? "s" : ""} and updates ${plan.updateReviewCount} existing product${plan.updateReviewCount !== 1 ? "s" : ""}.`
-                    : "Existing products will not be modified."
-                  }
+                  {(() => {
+                    const newCount = plan.productCount - (plan.updateReviewCount ?? 0);
+                    const updateCount = plan.updateReviewCount ?? 0;
+                    if (newCount > 0 && updateCount > 0) {
+                      return `Creates ${newCount} new product${newCount !== 1 ? "s" : ""} and updates ${updateCount} existing product${updateCount !== 1 ? "s" : ""}.`;
+                    } else if (newCount > 0) {
+                      return `Creates ${newCount} new product${newCount !== 1 ? "s" : ""}.`;
+                    } else if (updateCount > 0) {
+                      return `Updates ${updateCount} existing product${updateCount !== 1 ? "s" : ""}.`;
+                    }
+                    return "Existing products will not be modified.";
+                  })()}
                 </Text>
               </BlockStack>
             </Modal.Section>

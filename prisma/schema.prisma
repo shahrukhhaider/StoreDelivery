@@ -207,6 +207,7 @@ model ImportItem {
   shopifyProductId  String?          @map("shopify_product_id")
   errorCode         String?          @map("error_code")
   errorMessage      String?          @map("error_message")
+  appliedDiff       Json?            @map("applied_diff")
 
   importOperation ImportOperation @relation(fields: [importOperationId], references: [id])
 
