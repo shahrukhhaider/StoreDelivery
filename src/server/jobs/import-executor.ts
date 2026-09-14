@@ -244,6 +244,22 @@ export async function executeImport(operationId: string): Promise<void> {
 
     // Fetch primary location for inventory
     const locationId = await getPrimaryLocationId(client, operation.shop.shopDomain);
+    if (!locationId) {
+      logger.warn("No primary location found — inventory quantities will not be set", {
+        operationId,
+        shopDomain: operation.shop.shopDomain,
+      });
+      // Persist warning so the UI can surface it to the user
+      const hasQtyProducts = productsToWrite.some((p) =>
+        p.variants.some((v) => v.inventoryQuantity != null),
+      );
+      if (hasQtyProducts) {
+        await prisma.importOperation.update({
+          where: { id: operationId },
+          data: { warnings: { push: "NO_LOCATION_QTY_SKIPPED" } },
+        });
+      }
+    }
 
     // Build product lookup map for onItemComplete callback
     const productBySourceKey = new Map<string, CatalogProduct>();

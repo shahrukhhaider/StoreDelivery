@@ -168,6 +168,7 @@ model ImportOperation {
   successCount    Int                   @default(0) @map("success_count")
   failedCount     Int                   @default(0) @map("failed_count")
   skippedCount    Int                   @default(0) @map("skipped_count")
+  warnings        String[]              @default([]) // user-facing warning codes
   createdAt       DateTime              @default(now()) @map("created_at")
   completedAt     DateTime?             @map("completed_at")
 

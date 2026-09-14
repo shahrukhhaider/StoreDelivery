@@ -117,6 +117,7 @@ router.get("/:operationId", async (req, res, next) => {
       successCount: operation.successCount,
       failedCount: operation.failedCount,
       skippedCount: operation.skippedCount,
+      warnings: operation.warnings ?? [],
       progress,
       elapsedMs,
       createdAt: operation.createdAt,

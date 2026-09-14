@@ -89,6 +89,27 @@ const INVENTORY_ITEM_UPDATE_MUTATION = `
 `;
 
 // ---------------------------------------------------------------------------
+// Mutation 2b — inventoryBulkToggleActivation (ensure items are stocked at location)
+// Must be called before inventorySetQuantities for items not yet activated at the location.
+// Idempotent — activating an already-active item is a no-op.
+// ---------------------------------------------------------------------------
+
+const INVENTORY_BULK_TOGGLE_ACTIVATION_MUTATION = `
+  mutation InventoryBulkToggleActivation($inventoryItemId: ID!, $locationActivations: [InventoryBulkToggleActivationInput!]!) {
+    inventoryBulkToggleActivation(inventoryItemId: $inventoryItemId, locationActivations: $locationActivations) {
+      inventoryItem {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
 // Mutation 3 — inventorySetQuantities (qty per variant × location)
 // Replaces deprecated inventorySetOnHandQuantities (deprecated 2024-07).
 // As of 2026-04 the @idempotent directive is REQUIRED.
@@ -439,6 +460,38 @@ export async function applyProductUpdate(
       }
 
       if (quantities.length > 0) {
+        // Ensure each inventory item is activated at the location before setting quantities.
+        // inventorySetQuantities fails with "Inventory is not stocked at Shop location" if
+        // the item was never enrolled at this location (e.g. created outside StoreKeeper).
+        for (const q of quantities) {
+          try {
+            const activationRes = await client.query<{
+              inventoryBulkToggleActivation: {
+                userErrors: Array<{ field: string[]; message: string; code: string }>;
+              };
+            }>(
+              INVENTORY_BULK_TOGGLE_ACTIVATION_MUTATION,
+              {
+                inventoryItemId: q.inventoryItemId,
+                locationActivations: [{ locationId: q.locationId, activate: true }],
+              },
+              "InventoryBulkToggleActivation",
+            );
+            const activationErrors = activationRes.data?.inventoryBulkToggleActivation?.userErrors ?? [];
+            if (activationErrors.length > 0) {
+              logger.warn("inventoryBulkToggleActivation errors", {
+                inventoryItemId: q.inventoryItemId,
+                errors: activationErrors,
+              });
+            }
+          } catch (err) {
+            logger.warn("inventoryBulkToggleActivation failed — will still attempt setQuantities", {
+              inventoryItemId: q.inventoryItemId,
+              error: (err as Error).message,
+            });
+          }
+        }
+
         try {
           const idempotencyKey = crypto.randomUUID();
           const res = await client.query<{

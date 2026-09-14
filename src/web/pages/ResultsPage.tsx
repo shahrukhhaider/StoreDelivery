@@ -143,10 +143,12 @@ export function ResultsPage({ operationId, onBack }: Props) {
   const isComplete = status?.status === "completed" || status?.status === "failed";
   const hasFailed = (status?.failedCount ?? 0) > 0;
 
-  function itemStatusBadge(itemStatus: string) {
+  function itemStatusBadge(itemStatus: string, itemAction: string) {
     switch (itemStatus) {
       case "success":
-        return <Badge tone="success">Created</Badge>;
+        return itemAction === "update"
+          ? <Badge tone="success">Updated</Badge>
+          : <Badge tone="success">Created</Badge>;
       case "failed":
         return <Badge tone="critical">Failed</Badge>;
       case "skipped":
@@ -166,7 +168,7 @@ export function ResultsPage({ operationId, onBack }: Props) {
         </Text>
       </IndexTable.Cell>
       <IndexTable.Cell>{item.action}</IndexTable.Cell>
-      <IndexTable.Cell>{itemStatusBadge(item.status)}</IndexTable.Cell>
+      <IndexTable.Cell>{itemStatusBadge(item.status, item.action)}</IndexTable.Cell>
       <IndexTable.Cell>
         {item.shopifyProductId ? (
           <Text as="span" variant="bodySm" tone="subdued">
@@ -215,6 +217,16 @@ export function ResultsPage({ operationId, onBack }: Props) {
           </Banner>
         )}
 
+        {status?.warnings?.includes("NO_LOCATION_QTY_SKIPPED") && (
+          <Banner title="Inventory quantities were not set" tone="warning">
+            <p>
+              No Shopify location was found for this store. Products were created successfully,
+              but inventory quantities from the file were skipped. Set up a location in your
+              Shopify admin and re-import to apply quantities.
+            </p>
+          </Banner>
+        )}
+
         {/* Progress / Summary */}
         <Card>
           <BlockStack gap="300">
@@ -258,7 +270,7 @@ export function ResultsPage({ operationId, onBack }: Props) {
                   {status?.successCount ?? 0}
                 </Text>
                 <Text as="p" variant="bodySm" tone="subdued">
-                  created
+                  succeeded
                 </Text>
               </BlockStack>
               <BlockStack gap="100">
@@ -312,7 +324,7 @@ export function ResultsPage({ operationId, onBack }: Props) {
             pressed={filter === "success"}
             onClick={() => { setFilter("success"); setPage(1); }}
           >
-            Created
+            Succeeded
           </Button>
           <Button
             pressed={filter === "failed"}

@@ -399,6 +399,7 @@ export type ImportStatus = {
   successCount: number;
   failedCount: number;
   skippedCount: number;
+  warnings?: string[];
   progress: number;
   elapsedMs?: number;
   createdAt?: string;
