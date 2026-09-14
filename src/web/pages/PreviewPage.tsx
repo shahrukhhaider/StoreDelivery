@@ -482,23 +482,32 @@ export function PreviewPage({ catalogId, onBack, onExecute }: Props) {
                   This import will:
                 </Text>
                 <BlockStack gap="100">
-                  <Text as="p" variant="bodyMd">
-                    Create <strong>{plan.productCount}</strong> products
-                  </Text>
-                  <Text as="p" variant="bodyMd">
-                    Create <strong>{plan.variantCount}</strong> variants
-                  </Text>
+                  {(plan.productCount - (plan.updateReviewCount ?? 0)) > 0 && (
+                    <Text as="p" variant="bodyMd">
+                      Create <strong>{plan.productCount - (plan.updateReviewCount ?? 0)}</strong> product{(plan.productCount - (plan.updateReviewCount ?? 0)) !== 1 ? "s" : ""}
+                    </Text>
+                  )}
+                  {(plan.variantCount - (plan.updateVariantCount ?? 0)) > 0 && (
+                    <Text as="p" variant="bodyMd">
+                      Create <strong>{plan.variantCount - (plan.updateVariantCount ?? 0)}</strong> variant{(plan.variantCount - (plan.updateVariantCount ?? 0)) !== 1 ? "s" : ""}
+                    </Text>
+                  )}
+                  {(plan.updateReviewCount ?? 0) > 0 && (
+                    <Text as="p" variant="bodyMd">
+                      Update <strong>{plan.updateReviewCount}</strong> existing product{plan.updateReviewCount !== 1 ? "s" : ""}
+                    </Text>
+                  )}
+                  {(plan.updateVariantCount ?? 0) > 0 && (
+                    <Text as="p" variant="bodyMd">
+                      Update <strong>{plan.updateVariantCount}</strong> existing variant{plan.updateVariantCount !== 1 ? "s" : ""}
+                    </Text>
+                  )}
                   <Text as="p" variant="bodyMd">
                     Attach <strong>{plan.imageCount}</strong> images
                   </Text>
                   {(plan.skippedCount ?? 0) > 0 && (
                     <Text as="p" variant="bodyMd" tone="subdued">
                       Skip {plan.skippedCount} blocked product(s)
-                    </Text>
-                  )}
-                  {(plan.updateReviewCount ?? 0) > 0 && (
-                    <Text as="p" variant="bodyMd">
-                      Update <strong>{plan.updateReviewCount}</strong> existing product{plan.updateReviewCount !== 1 ? "s" : ""} with field changes
                     </Text>
                   )}
                 </BlockStack>

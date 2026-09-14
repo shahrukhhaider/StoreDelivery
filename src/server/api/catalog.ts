@@ -506,11 +506,23 @@ router.post("/:id/plan", async (req, res, next) => {
       where: { catalogId: catalog.id },
       orderBy: { id: "desc" },
     });
-    const updateReviewCount = latestRun
-      ? await prisma.runItem.count({
+    const updateReviewItems = latestRun
+      ? await prisma.runItem.findMany({
           where: { catalogRunId: latestRun.id, classification: "UPDATE_REVIEW" },
+          select: { sourceProductKey: true },
         })
-      : 0;
+      : [];
+    const updateReviewCount = updateReviewItems.length;
+
+    // Count variants belonging to UPDATE_REVIEW products
+    const updateReviewKeys = new Set(updateReviewItems.map((i) => i.sourceProductKey));
+    let updateVariantCount = 0;
+    for (const p of included) {
+      if (updateReviewKeys.has(p.sourceKey)) {
+        const data = p.normalizedJson as unknown as CatalogProduct;
+        updateVariantCount += data.variants?.length ?? 0;
+      }
+    }
 
     // Count variants and images from included products
     let variantCount = 0;
@@ -542,6 +554,7 @@ router.post("/:id/plan", async (req, res, next) => {
         imageCount,
         skippedCount: excluded.length,
         updateReviewCount,
+        updateVariantCount,
         idempotencyKey,
         existing: true,
       });
@@ -567,6 +580,7 @@ router.post("/:id/plan", async (req, res, next) => {
       imageCount,
       skippedCount: excluded.length,
       updateReviewCount,
+      updateVariantCount,
       idempotencyKey,
       existing: false,
     });

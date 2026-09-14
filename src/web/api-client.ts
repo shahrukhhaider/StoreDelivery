@@ -367,6 +367,8 @@ export type PlanResponse = {
   skippedCount?: number;
   /** Products that already exist in Shopify with field differences — handled via the Updates tab. */
   updateReviewCount?: number;
+  /** Variants belonging to UPDATE_REVIEW products. */
+  updateVariantCount?: number;
   successCount?: number;
   failedCount?: number;
   idempotencyKey?: string;
